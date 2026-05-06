@@ -14,3 +14,10 @@ resend
 
 # --- 台股 fallback 用 ---
 akshare
+
+# --- Streamlit Cloud webapp（路徑 5）---
+# 合併進主 requirements.txt 的原因：Streamlit Cloud 新版 UI 移除了
+# "Python dependencies file" 欄位，強制只看 requirements.txt。
+# GH Actions main pipeline 會多裝這幾個（~20 秒），不影響功能。
+streamlit>=1.32
+plotly>=5.18
