@@ -228,19 +228,78 @@ def _render_text_sections(text_reports):
     return "\n  ".join(sections)
 
 
-def _export_kline_json(report_df, market_id="tw-share", top_n=None, history_days=500):
+def _calc_ma(closes, window):
+    """簡單移動平均；前 window-1 天 None；用純 Python 算（不依賴 numpy 也能跑）"""
+    out = [None] * len(closes)
+    if len(closes) < window:
+        return out
+    s = sum(closes[:window])
+    out[window - 1] = s / window
+    for i in range(window, len(closes)):
+        s += closes[i] - closes[i - window]
+        out[i] = s / window
+    return out
+
+
+def _fetch_yf_info(ticker):
+    """
+    撈 yfinance.info 抓基本面（市值/PE/EPS/殖利率/行業/簡介等）。
+    yfinance 對台股 .info 支援可能不完整，部分欄位會是 None。
+    遇 rate limit / network error 直接回 None，不重試（不阻塞 build）。
+    """
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker)
+        info = t.info or {}
+    except Exception:
+        return None
+
+    # 只挑 chart.html 顯示用得到的欄位（控制 JSON size）
+    fields = {
+        "longName": info.get("longName") or info.get("shortName"),
+        "sector": info.get("sector"),
+        "industry": info.get("industry"),
+        "marketCap": info.get("marketCap"),
+        "trailingPE": info.get("trailingPE"),
+        "forwardPE": info.get("forwardPE"),
+        "trailingEps": info.get("trailingEps"),
+        "dividendYield": info.get("dividendYield"),
+        "beta": info.get("beta"),
+        "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh"),
+        "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow"),
+        "averageVolume": info.get("averageVolume"),
+        "fullTimeEmployees": info.get("fullTimeEmployees"),
+        "country": info.get("country"),
+        "website": info.get("website"),
+        "longBusinessSummary": info.get("longBusinessSummary"),
+    }
+    # 全部 None 則視為無資料
+    if all(v is None for v in fields.values()):
+        return None
+    return fields
+
+
+def _export_kline_json(report_df, market_id="tw-share", top_n=None,
+                      history_days=500, info_top_n=100):
     """
     從 data/<market_id>/dayK/*.csv 中挑出 report_df 中的個股，
-    每檔 export 成 dist/data/<safe_id>.json（lightweight-charts 格式）。
-    同時寫 dist/data/manifest.json 列出所有可用 ticker。
+    每檔 export 成 dist/data/<safe_id>.json。
 
-    top_n=None 表示 export 全部（建議：飆股清單上每個代號都該能看 K 線，
-    不限 Top N 避免「列得出但點不到」的 UX 缺口）。
-    傳 int 則只取年漲幅前 N 名（譬如想節省 deploy 時間）。
+    JSON schema (Phase 1 升級):
+        {
+          "candles": [{time, open, high, low, close, volume}, ...],
+          "ma20":  [None, ..., 612.5, 614.0, ...],   // 對齊 candles 同長度
+          "ma60":  [...],
+          "ma200": [...],
+          "info":  {longName, sector, industry, marketCap, trailingPE, ...} | null
+        }
 
-    safe_id = ticker.replace('.', '_').replace('/', '_')，避免 URL 路徑問題。
+    top_n=None 表示 export 全部 K 線（飆股清單每個代號都該點得到）。
+    info_top_n=100 表示只對 Year_High Top 100 撈 yfinance.info（避免拖慢 build）。
+    其餘檔的 info 欄位為 None，UI 端顯示「外部連結」fallback。
 
-    回傳 manifest list（即使部分檔案失敗也會繼續）。
+    safe_id = ticker.replace('.', '_').replace('/', '_')
+    回傳 manifest list。
     """
     if report_df is None or len(report_df) == 0:
         print("⚠️ [build_web] report_df 為空，跳過 K 線 export")
@@ -271,8 +330,16 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None, history_days
     if top_n is not None and top_n > 0:
         df_ranked = df_ranked.head(top_n)
 
+    # 紀錄前 info_top_n 名要撈 yfinance.info 的 ticker set
+    info_tickers = set()
+    if info_top_n and info_top_n > 0:
+        info_tickers = set(df_ranked.head(info_top_n)["Ticker"].astype(str).tolist())
+        print(f"   - 將對 Top {len(info_tickers)} 飆股撈 yfinance.info（基本面）")
+
     manifest = []
     skipped = 0
+    info_fetched = 0
+    info_failed = 0
     for _, row in df_ranked.iterrows():
         ticker = str(row["Ticker"])
         name = str(row.get("Full_Name", ticker))
@@ -289,7 +356,6 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None, history_days
         try:
             df = pd.read_csv(csv_path)
             df.columns = [c.lower() for c in df.columns]
-            # yfinance 第一欄通常是 Date；若無 'date' 嘗試把第一欄當 date
             if "date" not in df.columns:
                 first_col = df.columns[0]
                 df = df.rename(columns={first_col: "date"})
@@ -298,29 +364,58 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None, history_days
                 skipped += 1
                 continue
 
-            # 截尾保留最近 history_days 天，控制 JSON size
             if len(df) > history_days:
                 df = df.tail(history_days)
 
             records = []
+            closes = []
             for _, r in df.iterrows():
                 try:
-                    records.append({
+                    rec = {
                         "time": str(r["date"])[:10],
                         "open": float(r["open"]),
                         "high": float(r["high"]),
                         "low": float(r["low"]),
                         "close": float(r["close"]),
-                    })
+                    }
+                    if "volume" in df.columns:
+                        try:
+                            rec["volume"] = float(r["volume"])
+                        except (ValueError, TypeError):
+                            pass
+                    records.append(rec)
+                    closes.append(rec["close"])
                 except (ValueError, TypeError):
                     continue
             if not records:
                 skipped += 1
                 continue
 
+            # 算移動平均
+            ma20 = _calc_ma(closes, 20)
+            ma60 = _calc_ma(closes, 60)
+            ma200 = _calc_ma(closes, 200)
+
+            # 撈基本面（只對 info_tickers 內的個股）
+            info = None
+            if ticker in info_tickers:
+                info = _fetch_yf_info(ticker)
+                if info is not None:
+                    info_fetched += 1
+                else:
+                    info_failed += 1
+
+            payload = {
+                "candles": records,
+                "ma20": ma20,
+                "ma60": ma60,
+                "ma200": ma200,
+                "info": info,
+            }
+
             safe_id = ticker.replace(".", "_").replace("/", "_")
             (out_dir / f"{safe_id}.json").write_text(
-                json.dumps(records, ensure_ascii=False), encoding="utf-8"
+                json.dumps(payload, ensure_ascii=False), encoding="utf-8"
             )
 
             manifest.append({
@@ -331,18 +426,22 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None, history_days
                 "month_high": float(row["Month_High"]) if pd.notna(row.get("Month_High")) else None,
                 "week_high": float(row["Week_High"]) if pd.notna(row.get("Week_High")) else None,
                 "samples": len(records),
+                "has_info": info is not None,
+                "sector": info.get("sector") if info else None,
+                "industry": info.get("industry") if info else None,
             })
-        except Exception as e:
+        except Exception:
             skipped += 1
             continue
 
-    # 排序後寫 manifest（依年漲幅 desc）
     manifest.sort(key=lambda x: x.get("year_high") or -999, reverse=True)
     (out_dir / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
     print(f"   - K 線 JSON：{len(manifest)} 檔 → dist/data/（跳過 {skipped} 檔）")
+    if info_tickers:
+        print(f"   - yfinance.info：成功 {info_fetched} 檔 / 失敗 {info_failed} 檔")
     return manifest
 
 

@@ -3,25 +3,43 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>K 線 — my-stock-monitor</title>
-<meta name="description" content="個股 K 線互動圖（TradingView Lightweight Charts）">
+<title>個股檢視 — my-stock-monitor</title>
+<meta name="description" content="個股檢視頁（概覽 / 基本資料 / 技術分析 / 籌碼產業）">
 <style>
 :root {
-  --bg: #fafafa;
+  --bg: #f5f6f8;
+  --bg-deep: #ffffff;
   --card: #ffffff;
-  --text: #1f2328;
-  --muted: #656d76;
-  --border: #d0d7de;
-  --accent: #0969da;
+  --card-hover: #f9fafb;
+  --text: #111827;
+  --text-strong: #030712;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  --accent: #2563eb;
+  --accent-soft: #dbeafe;
+  --up: #d73a49;        /* 台股紅漲 */
+  --down: #16a34a;      /* 台股綠跌 */
+  --warn: #f59e0b;
+  --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 1px 4px rgba(0,0,0,0.05);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0d1117;
-    --card: #161b22;
-    --text: #e6edf3;
-    --muted: #8b949e;
-    --border: #30363d;
-    --accent: #58a6ff;
+    --bg: #0a0e14;
+    --bg-deep: #070a0f;
+    --card: #131720;
+    --card-hover: #1a1f2b;
+    --text: #d4d8e0;
+    --text-strong: #f3f4f6;
+    --muted: #6b7280;
+    --border: #1f2937;
+    --border-strong: #374151;
+    --accent: #06b6d4;
+    --accent-soft: #064e6f;
+    --up: #ef4444;
+    --down: #22c55e;
+    --warn: #fbbf24;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.2);
   }
 }
 * { box-sizing: border-box; }
@@ -31,91 +49,352 @@ body {
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;
-  padding: 1rem;
+  min-height: 100vh;
 }
-.container { max-width: 1200px; margin: 0 auto; }
+.container { max-width: 1200px; margin: 0 auto; padding: 1rem 1rem 4rem; }
+
+/* === Header === */
 header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  padding-bottom: 1rem;
+  gap: 0.75rem;
+  padding: 1rem 0 1.25rem;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
 }
-header h1 { margin: 0; font-size: 1.4rem; }
-header .nav { color: var(--muted); font-size: 0.9rem; }
-header .nav a { color: var(--accent); text-decoration: none; }
-header .nav a:hover { text-decoration: underline; }
-.metrics {
+.title-block h1 {
+  margin: 0 0 0.15rem 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+.title-block .subtitle {
   color: var(--muted);
+  font-size: 0.9rem;
+}
+.title-block .ticker-pill {
+  display: inline-block;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: ui-monospace, "SF Mono", monospace;
   font-size: 0.85rem;
-  margin-bottom: 1rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
 }
-.metrics span { margin-right: 1rem; }
-.metrics strong.up { color: #d73a49; }
-.metrics strong.down { color: #28a745; }
-.chart-card {
+.nav-back { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+.nav-back:hover { text-decoration: underline; }
+
+/* === Tabs === */
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+  -webkit-overflow-scrolling: touch;
+}
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.7rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; animation: fadeIn 0.2s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* === Cards === */
+.card {
   background: var(--card);
-  padding: 1rem;
-  border-radius: 8px;
   border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
   margin-bottom: 1rem;
+  box-shadow: var(--shadow);
 }
-#chart { width: 100%; height: 500px; }
-.empty {
+.card h3 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.card h3::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 14px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+/* === Stat grid === */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+.stat {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+.stat .label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.stat .value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  line-height: 1.2;
+  font-feature-settings: "tnum" 1;
+}
+.stat .value.up { color: var(--up); }
+.stat .value.down { color: var(--down); }
+.stat .sub {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
+
+/* === Profile table === */
+.kv-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.kv-table tr { border-bottom: 1px solid var(--border); }
+.kv-table tr:last-child { border-bottom: none; }
+.kv-table td { padding: 0.65rem 0.5rem; font-size: 0.9rem; vertical-align: top; }
+.kv-table td.k { color: var(--muted); width: 40%; max-width: 160px; }
+.kv-table td.v { color: var(--text-strong); font-weight: 500; }
+.kv-table td.v.mono { font-family: ui-monospace, "SF Mono", monospace; font-size: 0.85rem; }
+.summary-box {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+/* === Chart === */
+#chart { width: 100%; height: 480px; }
+#chart-mini { width: 100%; height: 200px; }
+.chart-controls {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.chart-controls button {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.chart-controls button:hover { background: var(--card-hover); }
+.chart-controls button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* === Empty / placeholder === */
+.empty, .placeholder {
   text-align: center;
   color: var(--muted);
-  padding: 4rem 1rem;
+  padding: 3rem 1rem;
   background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+}
+.placeholder .icon {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+.placeholder .roadmap-tag {
+  display: inline-block;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.75rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  margin-top: 0.6rem;
 }
 .empty code {
   background: var(--border);
-  padding: 0.2rem 0.5rem;
+  padding: 0.15rem 0.4rem;
   border-radius: 4px;
   font-size: 0.85rem;
 }
+
+/* === External links === */
 .external-links {
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--border);
   font-size: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
-.external-links a {
-  color: var(--accent);
-  margin-right: 1rem;
-  text-decoration: none;
-}
+.external-links a { color: var(--accent); text-decoration: none; }
 .external-links a:hover { text-decoration: underline; }
+.external-links .label { color: var(--muted); }
+
+/* === Tag pills (sector/industry) === */
+.tag-row { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.4rem 0 0.2rem; }
+.tag {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.75rem;
+  padding: 0.18rem 0.6rem;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+/* === Footer === */
+.footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding-top: 1.5rem;
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 600px) {
+  .container { padding: 0.75rem 0.75rem 3rem; }
+  .title-block h1 { font-size: 1.3rem; }
+  .stat .value { font-size: 1.1rem; }
+  .card { padding: 1rem; }
+  #chart { height: 380px; }
+}
 </style>
 </head>
 <body>
 <div class="container">
   <header>
-    <h1 id="title">個股 K 線</h1>
-    <div class="nav"><a href="index.html">← 回首頁</a></div>
+    <div class="title-block">
+      <h1 id="title">個股檢視<span id="ticker-pill" class="ticker-pill" hidden></span></h1>
+      <div id="subtitle" class="subtitle">載入中...</div>
+    </div>
+    <a class="nav-back" href="index.html">← 回首頁</a>
   </header>
-
-  <div id="metrics" class="metrics" hidden></div>
 
   <div id="empty" class="empty" hidden>
     <p><strong>找不到此個股的 K 線資料</strong></p>
-    <p>需在網址附上 <code>?ticker=2330.TW</code> 參數，且該檔須在飆股 Top 300 範圍內。</p>
+    <p>需在網址附上 <code>?ticker=2330.TW</code> 參數。</p>
     <p><a href="index.html">回首頁看飆股清單 →</a></p>
   </div>
 
-  <div id="chart-card" class="chart-card" hidden>
-    <div id="chart"></div>
+  <!-- Tab nav -->
+  <div id="tab-nav" class="tabs" hidden>
+    <button class="tab-btn active" data-tab="overview">📊 概覽</button>
+    <button class="tab-btn" data-tab="profile">📋 基本資料</button>
+    <button class="tab-btn" data-tab="technical">📈 技術分析</button>
+    <button class="tab-btn" data-tab="advanced">🔮 籌碼/產業</button>
   </div>
 
-  <div id="external" class="external-links" hidden>
-    <span style="color: var(--muted);">外部資源：</span>
-    <a id="link-wantgoo" href="#" target="_blank" rel="noopener">玩股網技術圖 →</a>
-    <a id="link-yahoo" href="#" target="_blank" rel="noopener">Yahoo 股市 →</a>
-    <a id="link-cnyes" href="#" target="_blank" rel="noopener">鉅亨網 →</a>
+  <!-- === Overview tab === -->
+  <div id="tab-overview" class="tab-panel active" hidden>
+    <div class="card">
+      <h3>關鍵指標</h3>
+      <div id="overview-stats" class="stats-grid"></div>
+    </div>
+
+    <div class="card">
+      <h3>近期走勢</h3>
+      <div id="chart-mini"></div>
+    </div>
+
+    <div class="external-links">
+      <span class="label">外部資源：</span>
+      <a id="link-wantgoo-1" href="#" target="_blank" rel="noopener">玩股網技術圖 →</a>
+      <a id="link-yahoo-1" href="#" target="_blank" rel="noopener">Yahoo 股市 →</a>
+      <a id="link-cnyes-1" href="#" target="_blank" rel="noopener">鉅亨網 →</a>
+    </div>
+  </div>
+
+  <!-- === Profile tab === -->
+  <div id="tab-profile" class="tab-panel" hidden>
+    <div id="profile-content"></div>
+  </div>
+
+  <!-- === Technical tab === -->
+  <div id="tab-technical" class="tab-panel" hidden>
+    <div class="card">
+      <h3>K 線 + 移動平均</h3>
+      <div class="chart-controls">
+        <button class="ma-toggle active" data-ma="ma20">MA20</button>
+        <button class="ma-toggle active" data-ma="ma60">MA60</button>
+        <button class="ma-toggle" data-ma="ma200">MA200</button>
+      </div>
+      <div id="chart"></div>
+    </div>
+
+    <div class="card">
+      <h3>近期報酬率</h3>
+      <div id="returns-grid" class="stats-grid"></div>
+    </div>
+  </div>
+
+  <!-- === Advanced (chips/sector) tab === -->
+  <div id="tab-advanced" class="tab-panel" hidden>
+    <div class="placeholder">
+      <span class="icon">🔮</span>
+      <p><strong>籌碼分析</strong>（外資 / 投信 / 自營商買賣超）</p>
+      <p>需要 TWSE 三大法人 daily 資料源接入。</p>
+      <span class="roadmap-tag">Phase 2 開發中</span>
+    </div>
+
+    <div class="placeholder">
+      <span class="icon">🏭</span>
+      <p><strong>產業分析</strong>（同產業比較、市場定位、產品線）</p>
+      <p>需要 LLM API（Gemini / Claude）+ MOPS 公司基本資料抓取。</p>
+      <span class="roadmap-tag">Phase 3 開發中</span>
+    </div>
+
+    <div class="placeholder">
+      <span class="icon">🤖</span>
+      <p><strong>AI 智能摘要</strong>（公司業務 / 主要客戶 / 投資觀點）</p>
+      <p>使用 LLM API 對個股做整合分析。</p>
+      <span class="roadmap-tag">Phase 3 開發中</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    Hosted on Cloudflare Pages · Charts by TradingView Lightweight Charts
   </div>
 </div>
 
@@ -127,100 +406,288 @@ header .nav a:hover { text-decoration: underline; }
   const name = params.get("name") || ticker || "";
 
   const empty = document.getElementById("empty");
-  const card = document.getElementById("chart-card");
-  const externalDiv = document.getElementById("external");
+  const tabNav = document.getElementById("tab-nav");
   const titleEl = document.getElementById("title");
-  const metricsEl = document.getElementById("metrics");
+  const subtitleEl = document.getElementById("subtitle");
+  const pill = document.getElementById("ticker-pill");
 
   if (!ticker) {
     empty.hidden = false;
+    subtitleEl.textContent = "未指定 ticker";
     return;
   }
+
+  // 全部 tab panels 預設都 hidden（active 用 inline style 顯示）
+  document.querySelectorAll(".tab-panel").forEach(p => p.hidden = true);
 
   // safe_id：把 . 跟 / 換成 _（跟 build_web.py 對應）
   const safeId = ticker.replace(/\./g, "_").replace(/\//g, "_");
   const url = `data/${safeId}.json`;
 
-  // 先設外部連結（即使資料載入失敗，仍能跳玩股網）
+  // 外部連結（即使資料載入失敗，仍能跳）
   const cleanCode = ticker.split(".")[0];
-  document.getElementById("link-wantgoo").href = `https://www.wantgoo.com/stock/${cleanCode}/technical-chart`;
-  document.getElementById("link-yahoo").href = `https://tw.stock.yahoo.com/quote/${ticker}`;
-  document.getElementById("link-cnyes").href = `https://www.cnyes.com/twstock/${cleanCode}`;
+  const wantgooUrl = `https://www.wantgoo.com/stock/${cleanCode}/technical-chart`;
+  const yahooUrl = `https://tw.stock.yahoo.com/quote/${ticker}`;
+  const cnyesUrl = `https://www.cnyes.com/twstock/${cleanCode}`;
+  document.getElementById("link-wantgoo-1").href = wantgooUrl;
+  document.getElementById("link-yahoo-1").href = yahooUrl;
+  document.getElementById("link-cnyes-1").href = cnyesUrl;
 
-  let candles;
+  let payload;
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    candles = await res.json();
+    payload = await res.json();
   } catch (e) {
-    console.error("載入 K 線失敗:", e);
+    console.error("載入個股 JSON 失敗:", e);
     empty.hidden = false;
-    externalDiv.hidden = false;  // 至少給外部連結
-    titleEl.textContent = `${name} (${ticker})`;
+    titleEl.firstChild.textContent = name;
+    pill.textContent = ticker;
+    pill.hidden = false;
+    subtitleEl.innerHTML = `備援連結：<a href="${wantgooUrl}" target="_blank">玩股網</a> · <a href="${yahooUrl}" target="_blank">Yahoo</a>`;
     return;
   }
 
-  if (!Array.isArray(candles) || candles.length === 0) {
+  // 向後相容：舊 schema 是純 array，新 schema 是 object
+  let candles, ma20, ma60, ma200, info;
+  if (Array.isArray(payload)) {
+    candles = payload;
+    ma20 = ma60 = ma200 = null;
+    info = null;
+  } else {
+    candles = payload.candles || [];
+    ma20 = payload.ma20 || null;
+    ma60 = payload.ma60 || null;
+    ma200 = payload.ma200 || null;
+    info = payload.info || null;
+  }
+
+  if (!candles.length) {
     empty.hidden = false;
-    externalDiv.hidden = false;
     return;
   }
 
-  card.hidden = false;
-  externalDiv.hidden = false;
-  titleEl.textContent = `${name} (${ticker})`;
+  // ====== 顯示 header + tabs ======
+  titleEl.firstChild.textContent = name;
+  pill.textContent = ticker;
+  pill.hidden = false;
 
-  // 計算近期報酬率
   const last = candles[candles.length - 1];
+  const prev = candles.length > 1 ? candles[candles.length - 2] : null;
+  const dayChg = prev ? ((last.close - prev.close) / prev.close * 100) : null;
+  const subtitleParts = [];
+  if (info?.sector) subtitleParts.push(info.sector);
+  if (info?.industry) subtitleParts.push(info.industry);
+  subtitleParts.push(`取樣 ${candles.length} 根`);
+  subtitleEl.textContent = subtitleParts.join(" · ");
+
+  tabNav.hidden = false;
+  document.getElementById("tab-overview").hidden = false;
+
+  // ====== 計算近期報酬率 ======
   const compute = (days) => {
     if (candles.length <= days) return null;
-    const prev = candles[candles.length - days - 1];
-    return ((last.close - prev.close) / prev.close * 100);
+    const p = candles[candles.length - days - 1];
+    return ((last.close - p.close) / p.close * 100);
   };
   const wk = compute(5);
   const mo = compute(20);
   const yr = compute(250);
-  const fmt = (v) => {
-    if (v === null) return "—";
-    const cls = v >= 0 ? "up" : "down";
-    return `<strong class="${cls}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</strong>`;
-  };
-  metricsEl.innerHTML = `
-    <span>最新收盤：<strong>${last.close.toFixed(2)}</strong></span>
-    <span>近 5 日：${fmt(wk)}</span>
-    <span>近 20 日：${fmt(mo)}</span>
-    <span>近 250 日：${fmt(yr)}</span>
-    <span>取樣 ${candles.length} 根</span>
-  `;
-  metricsEl.hidden = false;
 
-  // TradingView Lightweight Charts (v4 API)
+  const fmtPct = (v, sub) => {
+    if (v === null || v === undefined || isNaN(v)) {
+      return `<div class="value">—</div>${sub ? `<div class="sub">${sub}</div>` : ""}`;
+    }
+    const cls = v >= 0 ? "up" : "down";
+    return `<div class="value ${cls}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</div>${sub ? `<div class="sub">${sub}</div>` : ""}`;
+  };
+  const fmtNum = (v, decimals = 2, suffix = "") => {
+    if (v === null || v === undefined || isNaN(v)) return "—";
+    return v.toFixed(decimals) + suffix;
+  };
+  const fmtBigNum = (v) => {
+    if (v === null || v === undefined) return "—";
+    if (v >= 1e12) return (v / 1e12).toFixed(2) + " 兆";
+    if (v >= 1e8) return (v / 1e8).toFixed(2) + " 億";
+    if (v >= 1e4) return (v / 1e4).toFixed(2) + " 萬";
+    return v.toLocaleString();
+  };
+
+  // ====== Tab: 概覽 ======
+  const overviewStats = document.getElementById("overview-stats");
+  overviewStats.innerHTML = `
+    <div class="stat"><div class="label">最新收盤</div><div class="value">${fmtNum(last.close)}</div><div class="sub">${last.time}</div></div>
+    <div class="stat"><div class="label">日漲跌</div>${fmtPct(dayChg, prev ? `vs ${prev.close.toFixed(2)}` : "")}</div>
+    <div class="stat"><div class="label">5 日報酬</div>${fmtPct(wk)}</div>
+    <div class="stat"><div class="label">20 日報酬</div>${fmtPct(mo)}</div>
+    <div class="stat"><div class="label">250 日報酬</div>${fmtPct(yr)}</div>
+    ${info?.marketCap ? `<div class="stat"><div class="label">市值</div><div class="value" style="font-size:1.05rem;">${fmtBigNum(info.marketCap)}</div></div>` : ""}
+    ${info?.trailingPE ? `<div class="stat"><div class="label">本益比 (PE)</div><div class="value" style="font-size:1.1rem;">${fmtNum(info.trailingPE)}</div></div>` : ""}
+    ${info?.dividendYield ? `<div class="stat"><div class="label">殖利率</div><div class="value" style="font-size:1.1rem;">${fmtNum(info.dividendYield * 100)}%</div></div>` : ""}
+  `;
+
+  // ====== Tab: 基本資料 ======
+  const profileEl = document.getElementById("profile-content");
+  if (info) {
+    const tags = [];
+    if (info.sector) tags.push(`<span class="tag">${info.sector}</span>`);
+    if (info.industry) tags.push(`<span class="tag">${info.industry}</span>`);
+    if (info.country) tags.push(`<span class="tag">${info.country}</span>`);
+
+    const rows = [];
+    if (info.longName) rows.push(["公司全名", info.longName]);
+    if (info.sector) rows.push(["產業類別", info.sector]);
+    if (info.industry) rows.push(["細項行業", info.industry]);
+    if (info.fullTimeEmployees) rows.push(["員工人數", info.fullTimeEmployees.toLocaleString()]);
+    if (info.country) rows.push(["註冊國家", info.country]);
+    if (info.website) rows.push(["官方網站", `<a href="${info.website}" target="_blank" rel="noopener" style="color:var(--accent);">${info.website}</a>`]);
+
+    rows.push(["市值", fmtBigNum(info.marketCap)]);
+    rows.push(["本益比 (TTM)", fmtNum(info.trailingPE)]);
+    rows.push(["預估本益比", fmtNum(info.forwardPE)]);
+    rows.push(["每股盈餘 (EPS)", fmtNum(info.trailingEps)]);
+    rows.push(["殖利率", info.dividendYield ? fmtNum(info.dividendYield * 100) + "%" : "—"]);
+    rows.push(["Beta", fmtNum(info.beta)]);
+    rows.push(["52 週高點", fmtNum(info.fiftyTwoWeekHigh)]);
+    rows.push(["52 週低點", fmtNum(info.fiftyTwoWeekLow)]);
+    rows.push(["平均日成交量", info.averageVolume ? info.averageVolume.toLocaleString() : "—"]);
+
+    profileEl.innerHTML = `
+      <div class="card">
+        <h3>公司簡介</h3>
+        ${tags.length ? `<div class="tag-row">${tags.join("")}</div>` : ""}
+        <table class="kv-table">
+          ${rows.map(([k, v]) => `<tr><td class="k">${k}</td><td class="v">${v == null || v === "" ? "—" : v}</td></tr>`).join("")}
+        </table>
+        ${info.longBusinessSummary ? `<div class="summary-box">${info.longBusinessSummary}</div>` : ""}
+      </div>
+    `;
+  } else {
+    profileEl.innerHTML = `
+      <div class="placeholder">
+        <span class="icon">📋</span>
+        <p><strong>此檔暫無基本面資料</strong></p>
+        <p>目前 yfinance.info 只對年漲幅 Top 100 飆股撈取，以節省 build 時間。</p>
+        <p>請見外部連結看完整公司資料：</p>
+        <p style="margin-top:0.8rem;">
+          <a href="${yahooUrl}" target="_blank" rel="noopener">Yahoo 股市</a> ·
+          <a href="${wantgooUrl}" target="_blank" rel="noopener">玩股網</a> ·
+          <a href="${cnyesUrl}" target="_blank" rel="noopener">鉅亨網</a>
+        </p>
+      </div>
+    `;
+  }
+
+  // ====== Tab: 技術分析 ======
+  const returnsGrid = document.getElementById("returns-grid");
+  const wk_high = candles.slice(-5).reduce((m, c) => Math.max(m, c.high), -Infinity);
+  const mo_high = candles.slice(-20).reduce((m, c) => Math.max(m, c.high), -Infinity);
+  const yr_high = candles.slice(-250).reduce((m, c) => Math.max(m, c.high), -Infinity);
+  const drawdown = yr_high > 0 ? ((last.close - yr_high) / yr_high * 100) : null;
+
+  returnsGrid.innerHTML = `
+    <div class="stat"><div class="label">5 日報酬</div>${fmtPct(wk)}</div>
+    <div class="stat"><div class="label">20 日報酬</div>${fmtPct(mo)}</div>
+    <div class="stat"><div class="label">250 日報酬</div>${fmtPct(yr)}</div>
+    <div class="stat"><div class="label">5 日高</div><div class="value">${fmtNum(wk_high)}</div></div>
+    <div class="stat"><div class="label">20 日高</div><div class="value">${fmtNum(mo_high)}</div></div>
+    <div class="stat"><div class="label">250 日高</div><div class="value">${fmtNum(yr_high)}</div></div>
+    <div class="stat"><div class="label">距 250 日高</div>${fmtPct(drawdown)}</div>
+  `;
+
+  // ====== Render charts ======
   const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const chart = LightweightCharts.createChart(document.getElementById("chart"), {
+  const chartTheme = {
     layout: {
-      background: { color: isDark ? "#161b22" : "#ffffff" },
-      textColor: isDark ? "#e6edf3" : "#1f2328",
+      background: { color: isDark ? "#131720" : "#ffffff" },
+      textColor: isDark ? "#d4d8e0" : "#111827",
     },
     grid: {
-      vertLines: { color: isDark ? "#30363d" : "#e1e4e8" },
-      horzLines: { color: isDark ? "#30363d" : "#e1e4e8" },
+      vertLines: { color: isDark ? "#1f2937" : "#f3f4f6" },
+      horzLines: { color: isDark ? "#1f2937" : "#f3f4f6" },
     },
-    timeScale: { timeVisible: false, secondsVisible: false, borderColor: isDark ? "#30363d" : "#d0d7de" },
-    rightPriceScale: { borderColor: isDark ? "#30363d" : "#d0d7de" },
+    timeScale: {
+      timeVisible: false,
+      secondsVisible: false,
+      borderColor: isDark ? "#1f2937" : "#e5e7eb"
+    },
+    rightPriceScale: { borderColor: isDark ? "#1f2937" : "#e5e7eb" },
     crosshair: { mode: 0 },
     autoSize: true,
+  };
+  const candleColors = {
+    upColor: isDark ? "#ef4444" : "#d73a49",
+    downColor: isDark ? "#22c55e" : "#16a34a",
+    borderUpColor: isDark ? "#ef4444" : "#d73a49",
+    borderDownColor: isDark ? "#22c55e" : "#16a34a",
+    wickUpColor: isDark ? "#ef4444" : "#d73a49",
+    wickDownColor: isDark ? "#22c55e" : "#16a34a",
+  };
+
+  // Chart 1: 主圖（技術分析 tab）
+  const chartMain = LightweightCharts.createChart(document.getElementById("chart"), chartTheme);
+  const seriesMain = chartMain.addCandlestickSeries(candleColors);
+  seriesMain.setData(candles);
+
+  // MA series（保留 ref 給 toggle 用）
+  const maSeries = {};
+  const maColors = { ma20: "#06b6d4", ma60: "#f59e0b", ma200: "#a78bfa" };
+  const buildMaData = (maArr) => {
+    if (!maArr) return [];
+    const out = [];
+    for (let i = 0; i < candles.length; i++) {
+      if (maArr[i] != null) out.push({ time: candles[i].time, value: maArr[i] });
+    }
+    return out;
+  };
+  if (ma20) {
+    maSeries.ma20 = chartMain.addLineSeries({ color: maColors.ma20, lineWidth: 2, title: "MA20" });
+    maSeries.ma20.setData(buildMaData(ma20));
+  }
+  if (ma60) {
+    maSeries.ma60 = chartMain.addLineSeries({ color: maColors.ma60, lineWidth: 2, title: "MA60" });
+    maSeries.ma60.setData(buildMaData(ma60));
+  }
+  if (ma200) {
+    maSeries.ma200 = chartMain.addLineSeries({ color: maColors.ma200, lineWidth: 2, title: "MA200", visible: false });
+    maSeries.ma200.setData(buildMaData(ma200));
+  }
+  chartMain.timeScale().fitContent();
+
+  // Chart 2: 縮圖（概覽 tab）
+  const chartMini = LightweightCharts.createChart(document.getElementById("chart-mini"), {
+    ...chartTheme,
+    timeScale: { ...chartTheme.timeScale, timeVisible: false },
+  });
+  chartMini.addCandlestickSeries(candleColors).setData(candles.slice(-60));
+  chartMini.timeScale().fitContent();
+
+  // ====== Tab switching ======
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const target = btn.dataset.tab;
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b === btn));
+      document.querySelectorAll(".tab-panel").forEach(p => {
+        const isActive = p.id === `tab-${target}`;
+        p.hidden = !isActive;
+        p.classList.toggle("active", isActive);
+      });
+      // resize chart on technical tab open
+      if (target === "technical") setTimeout(() => chartMain.timeScale().fitContent(), 50);
+      if (target === "overview") setTimeout(() => chartMini.timeScale().fitContent(), 50);
+    });
   });
 
-  const series = chart.addCandlestickSeries({
-    upColor: "#d73a49",      // 台股紅漲
-    downColor: "#28a745",    // 台股綠跌
-    borderUpColor: "#d73a49",
-    borderDownColor: "#28a745",
-    wickUpColor: "#d73a49",
-    wickDownColor: "#28a745",
+  // MA toggle
+  document.querySelectorAll(".ma-toggle").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const ma = btn.dataset.ma;
+      const next = !btn.classList.contains("active");
+      btn.classList.toggle("active", next);
+      if (maSeries[ma]) maSeries[ma].applyOptions({ visible: next });
+    });
   });
-  series.setData(candles);
-  chart.timeScale().fitContent();
+  // 預設 ma200 隱藏，按鈕也預設未 active（已在 HTML 設好）
 })();
 </script>
 </body>
