@@ -228,11 +228,15 @@ def _render_text_sections(text_reports):
     return "\n  ".join(sections)
 
 
-def _export_kline_json(report_df, market_id="tw-share", top_n=300, history_days=500):
+def _export_kline_json(report_df, market_id="tw-share", top_n=None, history_days=500):
     """
-    從 data/<market_id>/dayK/*.csv 中挑出 report_df 排名 top_n 的個股，
+    從 data/<market_id>/dayK/*.csv 中挑出 report_df 中的個股，
     每檔 export 成 dist/data/<safe_id>.json（lightweight-charts 格式）。
     同時寫 dist/data/manifest.json 列出所有可用 ticker。
+
+    top_n=None 表示 export 全部（建議：飆股清單上每個代號都該能看 K 線，
+    不限 Top N 避免「列得出但點不到」的 UX 缺口）。
+    傳 int 則只取年漲幅前 N 名（譬如想節省 deploy 時間）。
 
     safe_id = ticker.replace('.', '_').replace('/', '_')，避免 URL 路徑問題。
 
@@ -260,12 +264,12 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=300, history_days=
     out_dir = DIST_DIR / "data"
     out_dir.mkdir(exist_ok=True)
 
-    # 用 Year_High 排序，取前 top_n
-    df_ranked = (
-        report_df.dropna(subset=["Year_High"])
-        .sort_values("Year_High", ascending=False)
-        .head(top_n)
+    # 用 Year_High 排序；top_n=None → 全部，否則取前 top_n
+    df_ranked = report_df.dropna(subset=["Year_High"]).sort_values(
+        "Year_High", ascending=False
     )
+    if top_n is not None and top_n > 0:
+        df_ranked = df_ranked.head(top_n)
 
     manifest = []
     skipped = 0
