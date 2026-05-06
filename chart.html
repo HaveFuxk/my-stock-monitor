@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>K 線 — my-stock-monitor</title>
+<meta name="description" content="個股 K 線互動圖（TradingView Lightweight Charts）">
+<style>
+:root {
+  --bg: #fafafa;
+  --card: #ffffff;
+  --text: #1f2328;
+  --muted: #656d76;
+  --border: #d0d7de;
+  --accent: #0969da;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --border: #30363d;
+    --accent: #58a6ff;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  padding: 1rem;
+}
+.container { max-width: 1200px; margin: 0 auto; }
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+header h1 { margin: 0; font-size: 1.4rem; }
+header .nav { color: var(--muted); font-size: 0.9rem; }
+header .nav a { color: var(--accent); text-decoration: none; }
+header .nav a:hover { text-decoration: underline; }
+.metrics {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+.metrics span { margin-right: 1rem; }
+.metrics strong.up { color: #d73a49; }
+.metrics strong.down { color: #28a745; }
+.chart-card {
+  background: var(--card);
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+#chart { width: 100%; height: 500px; }
+.empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 4rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.empty code {
+  background: var(--border);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+.external-links {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.external-links a {
+  color: var(--accent);
+  margin-right: 1rem;
+  text-decoration: none;
+}
+.external-links a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1 id="title">個股 K 線</h1>
+    <div class="nav"><a href="index.html">← 回首頁</a></div>
+  </header>
+
+  <div id="metrics" class="metrics" hidden></div>
+
+  <div id="empty" class="empty" hidden>
+    <p><strong>找不到此個股的 K 線資料</strong></p>
+    <p>需在網址附上 <code>?ticker=2330.TW</code> 參數，且該檔須在飆股 Top 300 範圍內。</p>
+    <p><a href="index.html">回首頁看飆股清單 →</a></p>
+  </div>
+
+  <div id="chart-card" class="chart-card" hidden>
+    <div id="chart"></div>
+  </div>
+
+  <div id="external" class="external-links" hidden>
+    <span style="color: var(--muted);">外部資源：</span>
+    <a id="link-wantgoo" href="#" target="_blank" rel="noopener">玩股網技術圖 →</a>
+    <a id="link-yahoo" href="#" target="_blank" rel="noopener">Yahoo 股市 →</a>
+    <a id="link-cnyes" href="#" target="_blank" rel="noopener">鉅亨網 →</a>
+  </div>
+</div>
+
+<script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+(async function () {
+  const params = new URLSearchParams(location.search);
+  const ticker = params.get("ticker");
+  const name = params.get("name") || ticker || "";
+
+  const empty = document.getElementById("empty");
+  const card = document.getElementById("chart-card");
+  const externalDiv = document.getElementById("external");
+  const titleEl = document.getElementById("title");
+  const metricsEl = document.getElementById("metrics");
+
+  if (!ticker) {
+    empty.hidden = false;
+    return;
+  }
+
+  // safe_id：把 . 跟 / 換成 _（跟 build_web.py 對應）
+  const safeId = ticker.replace(/\./g, "_").replace(/\//g, "_");
+  const url = `data/${safeId}.json`;
+
+  // 先設外部連結（即使資料載入失敗，仍能跳玩股網）
+  const cleanCode = ticker.split(".")[0];
+  document.getElementById("link-wantgoo").href = `https://www.wantgoo.com/stock/${cleanCode}/technical-chart`;
+  document.getElementById("link-yahoo").href = `https://tw.stock.yahoo.com/quote/${ticker}`;
+  document.getElementById("link-cnyes").href = `https://www.cnyes.com/twstock/${cleanCode}`;
+
+  let candles;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    candles = await res.json();
+  } catch (e) {
+    console.error("載入 K 線失敗:", e);
+    empty.hidden = false;
+    externalDiv.hidden = false;  // 至少給外部連結
+    titleEl.textContent = `${name} (${ticker})`;
+    return;
+  }
+
+  if (!Array.isArray(candles) || candles.length === 0) {
+    empty.hidden = false;
+    externalDiv.hidden = false;
+    return;
+  }
+
+  card.hidden = false;
+  externalDiv.hidden = false;
+  titleEl.textContent = `${name} (${ticker})`;
+
+  // 計算近期報酬率
+  const last = candles[candles.length - 1];
+  const compute = (days) => {
+    if (candles.length <= days) return null;
+    const prev = candles[candles.length - days - 1];
+    return ((last.close - prev.close) / prev.close * 100);
+  };
+  const wk = compute(5);
+  const mo = compute(20);
+  const yr = compute(250);
+  const fmt = (v) => {
+    if (v === null) return "—";
+    const cls = v >= 0 ? "up" : "down";
+    return `<strong class="${cls}">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</strong>`;
+  };
+  metricsEl.innerHTML = `
+    <span>最新收盤：<strong>${last.close.toFixed(2)}</strong></span>
+    <span>近 5 日：${fmt(wk)}</span>
+    <span>近 20 日：${fmt(mo)}</span>
+    <span>近 250 日：${fmt(yr)}</span>
+    <span>取樣 ${candles.length} 根</span>
+  `;
+  metricsEl.hidden = false;
+
+  // TradingView Lightweight Charts (v4 API)
+  const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const chart = LightweightCharts.createChart(document.getElementById("chart"), {
+    layout: {
+      background: { color: isDark ? "#161b22" : "#ffffff" },
+      textColor: isDark ? "#e6edf3" : "#1f2328",
+    },
+    grid: {
+      vertLines: { color: isDark ? "#30363d" : "#e1e4e8" },
+      horzLines: { color: isDark ? "#30363d" : "#e1e4e8" },
+    },
+    timeScale: { timeVisible: false, secondsVisible: false, borderColor: isDark ? "#30363d" : "#d0d7de" },
+    rightPriceScale: { borderColor: isDark ? "#30363d" : "#d0d7de" },
+    crosshair: { mode: 0 },
+    autoSize: true,
+  });
+
+  const series = chart.addCandlestickSeries({
+    upColor: "#d73a49",      // 台股紅漲
+    downColor: "#28a745",    // 台股綠跌
+    borderUpColor: "#d73a49",
+    borderDownColor: "#28a745",
+    wickUpColor: "#d73a49",
+    wickDownColor: "#28a745",
+  });
+  series.setData(candles);
+  chart.timeScale().fitContent();
+})();
+</script>
+</body>
+</html>

@@ -171,6 +171,9 @@ h2 {{ margin: 1.5rem 0 0.75rem 0; font-size: 1.25rem; }}
     · 市場：<strong>{market_id}</strong>
     · <a href="https://github.com/HaveFuxk/my-stock-monitor" rel="noopener">GitHub</a>
   </p>
+  <p class="meta" style="margin-top: -0.75rem;">
+    💡 下方飆股清單中，點任一代號即可查看該檔個股 K 線（站內 TradingView 互動圖）。
+  </p>
 
   <h2>動能分布圖（週 / 月 / 年 × 最高 / 收盤 / 最低）</h2>
   <div class="grid">
@@ -223,6 +226,120 @@ def _render_text_sections(text_reports):
                 f'</div>'
             )
     return "\n  ".join(sections)
+
+
+def _export_kline_json(report_df, market_id="tw-share", top_n=300, history_days=500):
+    """
+    從 data/<market_id>/dayK/*.csv 中挑出 report_df 排名 top_n 的個股，
+    每檔 export 成 dist/data/<safe_id>.json（lightweight-charts 格式）。
+    同時寫 dist/data/manifest.json 列出所有可用 ticker。
+
+    safe_id = ticker.replace('.', '_').replace('/', '_')，避免 URL 路徑問題。
+
+    回傳 manifest list（即使部分檔案失敗也會繼續）。
+    """
+    if report_df is None or len(report_df) == 0:
+        print("⚠️ [build_web] report_df 為空，跳過 K 線 export")
+        return []
+
+    try:
+        import pandas as pd
+    except ImportError:
+        print("⚠️ [build_web] 沒裝 pandas，跳過 K 線 export")
+        return []
+
+    if "Year_High" not in report_df.columns:
+        print("⚠️ [build_web] report_df 沒有 Year_High 欄位，跳過 K 線 export")
+        return []
+
+    data_dir = Path("data") / market_id / "dayK"
+    if not data_dir.exists():
+        print(f"⚠️ [build_web] {data_dir} 不存在，跳過 K 線 export")
+        return []
+
+    out_dir = DIST_DIR / "data"
+    out_dir.mkdir(exist_ok=True)
+
+    # 用 Year_High 排序，取前 top_n
+    df_ranked = (
+        report_df.dropna(subset=["Year_High"])
+        .sort_values("Year_High", ascending=False)
+        .head(top_n)
+    )
+
+    manifest = []
+    skipped = 0
+    for _, row in df_ranked.iterrows():
+        ticker = str(row["Ticker"])
+        name = str(row.get("Full_Name", ticker))
+
+        # 檔名格式跟 analyzer 一致：<ticker>_<name>.csv
+        csv_candidates = list(data_dir.glob(f"{ticker}_*.csv"))
+        if not csv_candidates:
+            csv_candidates = [data_dir / f"{ticker}.csv"]
+        csv_path = csv_candidates[0]
+        if not csv_path.exists():
+            skipped += 1
+            continue
+
+        try:
+            df = pd.read_csv(csv_path)
+            df.columns = [c.lower() for c in df.columns]
+            # yfinance 第一欄通常是 Date；若無 'date' 嘗試把第一欄當 date
+            if "date" not in df.columns:
+                first_col = df.columns[0]
+                df = df.rename(columns={first_col: "date"})
+            required = {"date", "open", "high", "low", "close"}
+            if not required.issubset(df.columns):
+                skipped += 1
+                continue
+
+            # 截尾保留最近 history_days 天，控制 JSON size
+            if len(df) > history_days:
+                df = df.tail(history_days)
+
+            records = []
+            for _, r in df.iterrows():
+                try:
+                    records.append({
+                        "time": str(r["date"])[:10],
+                        "open": float(r["open"]),
+                        "high": float(r["high"]),
+                        "low": float(r["low"]),
+                        "close": float(r["close"]),
+                    })
+                except (ValueError, TypeError):
+                    continue
+            if not records:
+                skipped += 1
+                continue
+
+            safe_id = ticker.replace(".", "_").replace("/", "_")
+            (out_dir / f"{safe_id}.json").write_text(
+                json.dumps(records, ensure_ascii=False), encoding="utf-8"
+            )
+
+            manifest.append({
+                "ticker": ticker,
+                "name": name,
+                "safe_id": safe_id,
+                "year_high": float(row["Year_High"]) if pd.notna(row.get("Year_High")) else None,
+                "month_high": float(row["Month_High"]) if pd.notna(row.get("Month_High")) else None,
+                "week_high": float(row["Week_High"]) if pd.notna(row.get("Week_High")) else None,
+                "samples": len(records),
+            })
+        except Exception as e:
+            skipped += 1
+            continue
+
+    # 排序後寫 manifest（依年漲幅 desc）
+    manifest.sort(key=lambda x: x.get("year_high") or -999, reverse=True)
+    (out_dir / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    print(f"   - K 線 JSON：{len(manifest)} 檔 → dist/data/（跳過 {skipped} 檔）")
+    return manifest
 
 
 def build(images, report_df=None, text_reports=None, market_id="tw-share", sample_count=None):
@@ -283,11 +400,23 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     out = DIST_DIR / "index.html"
     out.write_text(html, encoding="utf-8")
 
+    # 5) 複製 chart.html 模板到 dist/（供站內 K 線頁使用）
+    chart_src = Path("chart.html")
+    if chart_src.exists():
+        shutil.copy2(chart_src, DIST_DIR / "chart.html")
+    else:
+        print("⚠️ [build_web] 找不到 chart.html 模板，跳過複製（站內 K 線頁不會 work）")
+
+    # 6) Export K 線 JSON 給 chart.html 用
+    kline_manifest = _export_kline_json(report_df, market_id=market_id)
+
     print("\n" + "=" * 60)
     print(f"🌐 [build_web] 靜態站已產出於 {DIST_DIR.resolve()}")
     print(f"   - index.html ({len(html)} chars)")
     print(f"   - {len(image_items)} 張 PNG → dist/images/")
     print(f"   - text_reports 段數：{len(text_reports or {})}")
+    print(f"   - chart.html: {'✅ 已複製' if chart_src.exists() else '❌ 未複製'}")
+    print(f"   - K 線 JSON：{len(kline_manifest)} 檔 → dist/data/")
     print(f"   - meta 已寫入 {META_FILE}")
     print("=" * 60 + "\n")
 

@@ -58,14 +58,24 @@ def get_market_url(market_id, ticker):
 
 def build_company_list(arr_pct, codes, names, bins, market_id):
     """
-    產出 HTML 格式的分箱清單，支援動態超連結與飆股高亮
+    產出 HTML 格式的分箱清單，支援動態超連結與飆股高亮。
+
+    站內模式：超連結預設指向同站的 chart.html（站內 TradingView K 線頁）。
+    chart.html 自己會 fallback 到外部資源（玩股網 / Yahoo / 鉅亨），
+    所以即使該檔不在 K 線 export 範圍內，使用者點下去仍有用。
     """
+    from urllib.parse import quote
     lines = [f"{'報酬區間':<12} | {'家數(比例)':<14} | 公司清單", "-"*80]
     total = len(arr_pct)
-    
-    def make_link(i):
-        url = get_market_url(market_id, codes[i])
-        return f'<a href="{url}" style="text-decoration:none; color:#0366d6;">{codes[i]}({names[i]})</a>'
+
+    def make_link(i, color="#0366d6", bold=False, suffix=""):
+        weight = "font-weight:bold;" if bold else ""
+        ticker = codes[i]
+        name_q = quote(names[i], safe="")
+        ticker_q = quote(ticker, safe="")
+        href = f"chart.html?ticker={ticker_q}&name={name_q}"
+        label = f"{ticker}({names[i]}{suffix})"
+        return f'<a href="{href}" style="text-decoration:none; color:{color}; {weight}">{label}</a>'
 
     for lo in range(int(X_MIN), int(X_MAX), int(BIN_SIZE)):
         up = lo + 10
@@ -73,7 +83,7 @@ def build_company_list(arr_pct, codes, names, bins, market_id):
         mask = (arr_pct >= lo) & (arr_pct < up)
         cnt = int(mask.sum())
         if cnt == 0: continue
-        
+
         picked_indices = np.where(mask)[0]
         links = [make_link(idx) for idx in picked_indices]
         lines.append(f"{lab:<12} | {cnt:>4} ({(cnt/total*100):5.1f}%) | {', '.join(links)}")
@@ -84,11 +94,10 @@ def build_company_list(arr_pct, codes, names, bins, market_id):
     if e_cnt > 0:
         e_picked = np.where(extreme_mask)[0]
         sorted_e = sorted(e_picked, key=lambda idx: arr_pct[idx], reverse=True)
-        e_links = []
-        for idx in sorted_e:
-            url = get_market_url(market_id, codes[idx])
-            e_links.append(f'<a href="{url}" style="text-decoration:none; color:red; font-weight:bold;">{codes[idx]}({names[idx]}:{arr_pct[idx]:.0f}%)</a>')
-        
+        e_links = [
+            make_link(idx, color="red", bold=True, suffix=f":{arr_pct[idx]:.0f}%")
+            for idx in sorted_e
+        ]
         lines.append(f"{' > 100%':<12} | {e_cnt:>4} ({(e_cnt/total*100):5.1f}%) | {', '.join(e_links)}")
 
     return "\n".join(lines)
