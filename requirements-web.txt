@@ -1,0 +1,6 @@
+# Streamlit Cloud 用的 dependencies（跟 main pipeline 的 requirements.txt 分開）
+# 部署時 Streamlit Cloud → App settings → Advanced → Python dependencies file: requirements-web.txt
+streamlit>=1.32
+pandas>=2.0
+plotly>=5.18
+requests>=2.31
