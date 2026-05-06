@@ -1,0 +1,16 @@
+# --- 基礎數據處理 ---
+pandas
+numpy
+matplotlib
+
+# --- 數據獲取（核心）---
+yfinance
+requests
+lxml          # pandas.read_html 解 TWSE JSP 用
+tqdm
+
+# --- 通知（暫關但 import 還在）---
+resend
+
+# --- 台股 fallback 用 ---
+akshare

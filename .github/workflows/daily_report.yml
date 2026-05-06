@@ -1,0 +1,58 @@
+name: TW Stock Monitor
+
+# 暫關 schedule，只允許手動觸發。確認本機跑通、設好 secrets 之後再開。
+on:
+  workflow_dispatch:
+    inputs:
+      market_choice:
+        description: 'Select Market'
+        required: true
+        default: 'tw-share'
+        type: choice
+        options:
+          - tw-share
+  # schedule:
+  #   - cron: '30 10 * * 1-5'  # UTC 10:30 = 台灣 18:30，週一~五
+
+permissions:
+  contents: read
+
+jobs:
+  tw-market-analysis:
+    name: 🇹🇼 Taiwan Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Cache Stock Data
+        uses: actions/cache@v4
+        with:
+          path: data/tw-share/dayK
+          key: ${{ runner.os }}-stock-tw-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-stock-tw-
+
+      - name: Environment Setup
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Market Analysis
+        env:
+          # 通知關閉中，這幾個 secret 等之後啟用 NOTIFY_ENABLED 再加：
+          # RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          # REPORT_RECEIVER_EMAIL: ${{ secrets.REPORT_RECEIVER_EMAIL }}
+          # TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          # TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PYTHONUNBUFFERED: "1"
+        run: python main.py --market ${{ inputs.market_choice }}
