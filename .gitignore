@@ -211,5 +211,5 @@ __marimo__/
 data/
 output/
 
-# 範例 / 暫存圖
-image/test.png
+# 跑 main.py 產生的 log
+run_log.txt
