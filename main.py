@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 import downloader_tw
 import analyzer
 import notifier
+import build_web
 
 
 def run_market_pipeline(market_id: str, market_name: str, emoji: str):
@@ -68,6 +69,18 @@ def run_market_pipeline(market_id: str, market_name: str, emoji: str):
             text_reports=text_reports,
             stats=stats,
         )
+
+        # --- Step 4: 產靜態站 dist/（給 Cloudflare Pages 部署）---
+        print(f"\n【Step 4: 靜態站打包】產出 dist/ 給 Cloudflare Pages...")
+        try:
+            build_web.build(
+                images=img_paths,
+                report_df=report_df,
+                text_reports=text_reports,
+                market_id=market_id,
+            )
+        except Exception as e:
+            print(f"⚠️ build_web 失敗（不影響資料 pipeline）: {e}")
 
     except Exception as e:
         print(f"❌ {market_name} 分析或寄信過程出錯:\n{traceback.format_exc()}")
