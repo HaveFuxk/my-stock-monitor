@@ -262,6 +262,10 @@ info = payload.get("info")
 ma20 = payload.get("ma20")
 ma60 = payload.get("ma60")
 ma200 = payload.get("ma200")
+rsi14 = payload.get("rsi14")
+macd_line = payload.get("macd_line")
+macd_signal = payload.get("macd_signal")
+macd_hist = payload.get("macd_hist")
 
 if not candles_list:
     st.warning("此檔無 K 線資料")
@@ -395,45 +399,112 @@ with tab_profile:
 
 # ---------- Tab: 技術分析 ----------
 with tab_technical:
-    st.markdown(f"### {pick_name}  `{pick}` — K 線 + 移動平均")
+    st.markdown(f"### {pick_name}  `{pick}` — K 線 + 技術指標")
 
-    show_ma20 = st.checkbox("MA20", value=True)
-    show_ma60 = st.checkbox("MA60", value=True)
-    show_ma200 = st.checkbox("MA200", value=False)
+    c1, c2, c3, c4, c5 = st.columns(5)
+    show_ma20 = c1.checkbox("MA20", value=True)
+    show_ma60 = c2.checkbox("MA60", value=True)
+    show_ma200 = c3.checkbox("MA200", value=False)
+    show_rsi = c4.checkbox("RSI(14)", value=True)
+    show_macd = c5.checkbox("MACD", value=True)
 
     import plotly.graph_objects as go
-    fig = go.Figure(data=[
-        go.Candlestick(
-            x=kline["time"], open=kline["open"], high=kline["high"],
-            low=kline["low"], close=kline["close"],
-            increasing_line_color="#d73a49", decreasing_line_color="#16a34a",
-            name=pick,
-        )
-    ])
+    from plotly.subplots import make_subplots
+
+    # 動態決定 subplot 數量
+    rows = 1
+    row_heights = [0.65]
+    subplot_titles = ["K 線 + 移動平均"]
+    if show_rsi and rsi14:
+        rows += 1
+        row_heights.append(0.18)
+        subplot_titles.append("RSI(14)")
+    if show_macd and macd_line:
+        rows += 1
+        row_heights.append(0.22)
+        subplot_titles.append("MACD(12,26,9)")
+
+    # 重整 row_heights 比例
+    total = sum(row_heights)
+    row_heights = [h / total for h in row_heights]
+
+    fig = make_subplots(
+        rows=rows, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.04,
+        row_heights=row_heights,
+        subplot_titles=subplot_titles,
+    )
+
+    # Row 1: K 線
+    fig.add_trace(go.Candlestick(
+        x=kline["time"], open=kline["open"], high=kline["high"],
+        low=kline["low"], close=kline["close"],
+        increasing_line_color="#d73a49", decreasing_line_color="#16a34a",
+        name=pick, showlegend=False,
+    ), row=1, col=1)
 
     if show_ma20 and ma20:
         fig.add_trace(go.Scatter(
             x=kline["time"], y=ma20, mode="lines", name="MA20",
             line=dict(color="#06b6d4", width=2)
-        ))
+        ), row=1, col=1)
     if show_ma60 and ma60:
         fig.add_trace(go.Scatter(
             x=kline["time"], y=ma60, mode="lines", name="MA60",
             line=dict(color="#f59e0b", width=2)
-        ))
+        ), row=1, col=1)
     if show_ma200 and ma200:
         fig.add_trace(go.Scatter(
             x=kline["time"], y=ma200, mode="lines", name="MA200",
             line=dict(color="#a78bfa", width=2)
-        ))
+        ), row=1, col=1)
+
+    current_row = 2
+    # Row 2: RSI
+    if show_rsi and rsi14:
+        fig.add_trace(go.Scatter(
+            x=kline["time"], y=rsi14, mode="lines", name="RSI(14)",
+            line=dict(color="#a78bfa", width=2),
+        ), row=current_row, col=1)
+        # 70 / 30 / 50 水平線
+        fig.add_hline(y=70, line=dict(color="#d73a49", width=1, dash="dash"),
+                      row=current_row, col=1)
+        fig.add_hline(y=30, line=dict(color="#16a34a", width=1, dash="dash"),
+                      row=current_row, col=1)
+        fig.add_hline(y=50, line=dict(color="#94a3b8", width=1, dash="dot"),
+                      row=current_row, col=1)
+        fig.update_yaxes(range=[0, 100], row=current_row, col=1)
+        current_row += 1
+
+    # Row 3: MACD（histogram + DIF + DEA）
+    if show_macd and macd_line:
+        # Histogram，紅綠跟台股慣例（>0 紅 / <0 綠）
+        if macd_hist:
+            colors = ["#d73a49" if (v or 0) >= 0 else "#16a34a" for v in macd_hist]
+            fig.add_trace(go.Bar(
+                x=kline["time"], y=macd_hist, name="Histogram",
+                marker_color=colors, showlegend=False, opacity=0.6,
+            ), row=current_row, col=1)
+        fig.add_trace(go.Scatter(
+            x=kline["time"], y=macd_line, mode="lines", name="DIF",
+            line=dict(color="#06b6d4", width=2),
+        ), row=current_row, col=1)
+        if macd_signal:
+            fig.add_trace(go.Scatter(
+                x=kline["time"], y=macd_signal, mode="lines", name="DEA",
+                line=dict(color="#f59e0b", width=2),
+            ), row=current_row, col=1)
 
     fig.update_layout(
         xaxis_rangeslider_visible=False,
-        height=520,
-        margin=dict(l=20, r=20, t=20, b=20),
+        height=200 + 280 * rows,
+        margin=dict(l=20, r=20, t=40, b=20),
         template="plotly_white",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
+    # 隱藏 subplot title 的多餘背景
+    fig.update_annotations(font_size=11)
     st.plotly_chart(fig, use_container_width=True)
 
     # 報酬率與波段高低

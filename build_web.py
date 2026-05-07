@@ -241,6 +241,99 @@ def _calc_ma(closes, window):
     return out
 
 
+def _calc_rsi(closes, period=14):
+    """
+    Wilder's RSI(period)，跟 TradingView / 大多技術分析平台一致。
+    前 period 天為 None（需 period+1 個 close 才能算第一個 RSI）。
+    """
+    n = len(closes)
+    out = [None] * n
+    if n <= period:
+        return out
+
+    # 計算每日漲跌
+    gains = [0.0] * n
+    losses = [0.0] * n
+    for i in range(1, n):
+        d = closes[i] - closes[i - 1]
+        if d > 0:
+            gains[i] = d
+        elif d < 0:
+            losses[i] = -d
+
+    # SMA seed (index = period)
+    avg_gain = sum(gains[1:period + 1]) / period
+    avg_loss = sum(losses[1:period + 1]) / period
+    if avg_loss == 0:
+        out[period] = 100.0
+    else:
+        rs = avg_gain / avg_loss
+        out[period] = 100.0 - 100.0 / (1.0 + rs)
+
+    # Wilder smoothing
+    for i in range(period + 1, n):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        if avg_loss == 0:
+            out[i] = 100.0
+        else:
+            rs = avg_gain / avg_loss
+            out[i] = 100.0 - 100.0 / (1.0 + rs)
+    return out
+
+
+def _calc_ema(values, period):
+    """EMA(period)，種子用前 period 個的 SMA。回傳跟 values 等長 list（前 period-1 是 None）。"""
+    n = len(values)
+    out = [None] * n
+    if n < period:
+        return out
+    seed = sum(values[:period]) / period
+    out[period - 1] = seed
+    alpha = 2.0 / (period + 1)
+    for i in range(period, n):
+        out[i] = alpha * values[i] + (1 - alpha) * out[i - 1]
+    return out
+
+
+def _calc_macd(closes, fast=12, slow=26, signal=9):
+    """
+    MACD(fast, slow, signal)：
+        macd_line = EMA(close, fast) - EMA(close, slow)
+        signal_line = EMA(macd_line, signal)
+        hist = macd_line - signal_line
+    回傳三條 list，皆與 closes 等長，無資料的位置為 None。
+    """
+    n = len(closes)
+    macd_line = [None] * n
+    signal_line = [None] * n
+    hist = [None] * n
+    if n < slow:
+        return macd_line, signal_line, hist
+
+    ema_fast = _calc_ema(closes, fast)
+    ema_slow = _calc_ema(closes, slow)
+    for i in range(n):
+        if ema_fast[i] is not None and ema_slow[i] is not None:
+            macd_line[i] = ema_fast[i] - ema_slow[i]
+
+    # 從 macd_line 第一個非 None 開始算 signal EMA
+    first_idx = next((i for i, v in enumerate(macd_line) if v is not None), None)
+    if first_idx is None:
+        return macd_line, signal_line, hist
+
+    macd_segment = macd_line[first_idx:]
+    if len(macd_segment) < signal:
+        return macd_line, signal_line, hist
+    sig_segment = _calc_ema(macd_segment, signal)
+    for j, v in enumerate(sig_segment):
+        if v is not None:
+            signal_line[first_idx + j] = v
+            if macd_line[first_idx + j] is not None:
+                hist[first_idx + j] = macd_line[first_idx + j] - v
+    return macd_line, signal_line, hist
+
+
 def _fetch_yf_info(ticker):
     """
     撈 yfinance.info 抓基本面（市值/PE/EPS/殖利率/行業/簡介等）。
@@ -396,6 +489,10 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
             ma60 = _calc_ma(closes, 60)
             ma200 = _calc_ma(closes, 200)
 
+            # 算技術指標（Phase 2）
+            rsi14 = _calc_rsi(closes, 14)
+            macd_line, macd_signal, macd_hist = _calc_macd(closes, 12, 26, 9)
+
             # 撈基本面（只對 info_tickers 內的個股）
             info = None
             if ticker in info_tickers:
@@ -410,6 +507,10 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
                 "ma20": ma20,
                 "ma60": ma60,
                 "ma200": ma200,
+                "rsi14": rsi14,
+                "macd_line": macd_line,
+                "macd_signal": macd_signal,
+                "macd_hist": macd_hist,
                 "info": info,
             }
 
