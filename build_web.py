@@ -14,6 +14,7 @@ build_web.py — 把 analyzer 跑出來的 PNG 與文字報表打包成靜態網
      - 不會重新跑 analyzer
 """
 import json
+import os
 import shutil
 import sys
 from datetime import datetime, timedelta
@@ -372,8 +373,30 @@ def _fetch_yf_info(ticker):
     return fields
 
 
+# Phase 3：大型股白名單。Top 100 飆股大多是妖股，使用者搜尋的反而是這些大型股。
+# 用市值排名的代理：直接寫死台股權重前 ~30 大的代號，強制納入 yfinance.info 抓取範圍。
+INFO_WHITELIST_TW = {
+    # 半導體龍頭
+    "2330.TW", "2454.TW", "2308.TW", "2382.TW", "3008.TW",
+    # 電子組裝 / 系統
+    "2317.TW", "2301.TW", "2353.TW", "2376.TW",
+    # 金融
+    "2881.TW", "2882.TW", "2883.TW", "2884.TW", "2885.TW",
+    "2886.TW", "2887.TW", "2890.TW", "2891.TW", "2892.TW", "5880.TW",
+    # 傳統產業
+    "1101.TW", "1216.TW", "1301.TW", "1303.TW", "1326.TW", "2002.TW",
+    # 電信 / 公用
+    "2412.TW", "3045.TW", "4904.TW", "9904.TW",
+    # 熱門 ETF（用戶搜尋率高）
+    "0050.TW", "0056.TW", "00878.TW", "00919.TW", "00929.TW", "00940.TW",
+    # 觀光 / 食品
+    "2912.TW", "2207.TW", "9921.TW",
+}
+
+
 def _export_kline_json(report_df, market_id="tw-share", top_n=None,
-                      history_days=500, info_top_n=100, chips_days=60):
+                      history_days=500, info_top_n=100, chips_days=60,
+                      enable_ai_summary=True):
     """
     從 data/<market_id>/dayK/*.csv 中挑出 report_df 中的個股，
     每檔 export 成 dist/data/<safe_id>.json。
@@ -429,10 +452,14 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
         df_ranked = df_ranked.head(top_n)
 
     # 紀錄前 info_top_n 名要撈 yfinance.info 的 ticker set
+    # Phase 3：聯集大型股白名單，避免「搜 2330 但無 info」的 UX 痛點
     info_tickers = set()
     if info_top_n and info_top_n > 0:
         info_tickers = set(df_ranked.head(info_top_n)["Ticker"].astype(str).tolist())
-        print(f"   - 將對 Top {len(info_tickers)} 飆股撈 yfinance.info（基本面）")
+        # 白名單必抓
+        wl_in_report = set(df_ranked["Ticker"].astype(str).tolist()) & INFO_WHITELIST_TW
+        info_tickers |= wl_in_report
+        print(f"   - 將對 Top {info_top_n} 飆股 + 白名單 {len(wl_in_report)} 大型股 = {len(info_tickers)} 檔 撈 yfinance.info")
 
     # 預載 chips downloader（若 SQLite 不存在就跳過）
     chips_query_fn = None
@@ -448,11 +475,28 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
         except ImportError:
             print(f"   - 找不到 downloader_chips 模組，跳過")
 
+    # 預載 AI summary 模組（Phase 3）
+    ai_summary_fn = None
+    if enable_ai_summary:
+        try:
+            import ai_summary as _ai_summary
+            from pathlib import Path as _P2
+            ai_db_exists = _P2("data/ai_summary.db").exists()
+            if os.getenv("GEMINI_API_KEY") or ai_db_exists:
+                ai_summary_fn = _ai_summary.get_summary
+                key_status = "set" if os.getenv("GEMINI_API_KEY") else "unset, cache-only"
+                print(f"   - AI summary 模組偵測到（GEMINI_API_KEY={key_status}）")
+            else:
+                print(f"   - GEMINI_API_KEY 未設且無 ai_summary cache，跳過 AI 摘要")
+        except ImportError:
+            print(f"   - 找不到 ai_summary 模組，跳過")
+
     manifest = []
     skipped = 0
     info_fetched = 0
     info_failed = 0
     chips_filled = 0
+    ai_filled = 0
     for _, row in df_ranked.iterrows():
         ticker = str(row["Ticker"])
         name = str(row.get("Full_Name", ticker))
@@ -530,6 +574,13 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
                     chips = chips_rows
                     chips_filled += 1
 
+            # AI 智能摘要（cache-first；只對有 info 的個股）
+            ai_summary_data = None
+            if ai_summary_fn is not None and info is not None:
+                ai_summary_data = ai_summary_fn(ticker, info)
+                if ai_summary_data:
+                    ai_filled += 1
+
             payload = {
                 "candles": records,
                 "ma20": ma20,
@@ -541,6 +592,7 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
                 "macd_hist": macd_hist,
                 "info": info,
                 "chips": chips,
+                "ai_summary": ai_summary_data,
             }
 
             safe_id = ticker.replace(".", "_").replace("/", "_")
@@ -558,6 +610,7 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
                 "samples": len(records),
                 "has_info": info is not None,
                 "has_chips": chips is not None,
+                "has_ai_summary": ai_summary_data is not None,
                 "sector": info.get("sector") if info else None,
                 "industry": info.get("industry") if info else None,
             })
@@ -566,6 +619,10 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
             continue
 
     manifest.sort(key=lambda x: x.get("year_high") or -999, reverse=True)
+
+    # Phase 3：算同 sector / industry peers，回填到每個個股 JSON 的 peers 欄位
+    _inject_peers(manifest, out_dir, top_n_per_sector=5)
+
     (out_dir / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -575,7 +632,61 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
         print(f"   - yfinance.info：成功 {info_fetched} 檔 / 失敗 {info_failed} 檔")
     if chips_query_fn is not None:
         print(f"   - 三大法人 chips：填入 {chips_filled} 檔")
+    if ai_summary_fn is not None:
+        print(f"   - AI summary：填入 {ai_filled} 檔")
     return manifest
+
+
+def _inject_peers(manifest, out_dir, top_n_per_sector=5):
+    """
+    對 manifest 中所有 has_info 的個股，按 sector 分組找出年漲幅 Top N，
+    把同 sector peers list 回寫到該個股 JSON 的 `peers` 欄位。
+
+    只對有 sector / has_info 的個股做（其他無資料來源做不出 peers）。
+    """
+    # 按 sector 分組
+    by_sector = {}
+    for m in manifest:
+        sec = m.get("sector")
+        if not sec or not m.get("has_info"):
+            continue
+        by_sector.setdefault(sec, []).append(m)
+
+    # 每個 sector 取年漲 Top N
+    sector_top = {}
+    for sec, items in by_sector.items():
+        ranked = sorted(items, key=lambda x: x.get("year_high") or -999, reverse=True)
+        sector_top[sec] = [
+            {
+                "ticker": x["ticker"],
+                "name": x["name"],
+                "safe_id": x["safe_id"],
+                "year_high": x.get("year_high"),
+            }
+            for x in ranked[:top_n_per_sector]
+        ]
+
+    # 把每個 sector 的 peers 回寫到該個股 JSON
+    updated = 0
+    for m in manifest:
+        sec = m.get("sector")
+        if not sec or sec not in sector_top:
+            continue
+        peers = [p for p in sector_top[sec] if p["ticker"] != m["ticker"]]
+        if not peers:
+            continue
+        json_path = out_dir / f"{m['safe_id']}.json"
+        if not json_path.exists():
+            continue
+        try:
+            payload = json.loads(json_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                payload["peers"] = peers
+                json_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+                updated += 1
+        except Exception:
+            continue
+    print(f"   - peers 回寫：{updated} 檔（依 sector 取年漲 Top {top_n_per_sector}）")
 
 
 def build(images, report_df=None, text_reports=None, market_id="tw-share", sample_count=None):

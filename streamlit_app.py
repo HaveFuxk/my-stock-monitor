@@ -267,6 +267,8 @@ macd_line = payload.get("macd_line")
 macd_signal = payload.get("macd_signal")
 macd_hist = payload.get("macd_hist")
 chips = payload.get("chips")
+ai_summary_data = payload.get("ai_summary")
+peers = payload.get("peers")
 
 if not candles_list:
     st.warning("此檔無 K 線資料")
@@ -620,14 +622,50 @@ with tab_advanced:
         )
 
     st.divider()
-    st.markdown("### 🏭 產業分析")
-    st.info(
-        "**Phase 3 開發中**\n\n"
-        "計劃接入 LLM API（Gemini / Claude）+ MOPS 公司基本資料，提供：\n"
-        "- 同產業比較與市場定位\n"
-        "- 主要產品 / 主要客戶\n"
-        "- AI 生成的個股分析摘要"
-    )
+
+    # === AI 智能摘要（Phase 3）===
+    st.markdown("### 🤖 AI 智能摘要")
+    if ai_summary_data and ai_summary_data.get("business"):
+        gen_at = ai_summary_data.get("generated_at")
+        if gen_at:
+            st.caption(f"由 Gemini AI 根據 yfinance 業務描述生成，生成於 {gen_at}")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown("**📦 業務分析**")
+            st.write(ai_summary_data["business"])
+        with c2:
+            st.markdown("**⭐ 競爭優勢**")
+            st.write(ai_summary_data["advantage"])
+        with c3:
+            st.markdown("**⚠️ 主要風險**")
+            st.write(ai_summary_data["risk"])
+        st.caption("⚠️ AI 生成內容僅供參考，基本面變動可能未即時反映。")
+    elif info:
+        st.info(
+            "**此檔暫無 AI 智能摘要**\n\n"
+            "可能是 GEMINI_API_KEY 未設或 Gemini API 暫時無回應。"
+            "AI 摘要僅對年漲幅 Top 100 飆股 + 大型股白名單生成。"
+        )
+    else:
+        st.caption("（此檔無 yfinance 業務描述，無法生成 AI 摘要）")
+
+    st.divider()
+
+    # === 同產業 Top 5（Phase 3）===
+    st.markdown("### 🏭 同產業 Top 5（依年漲幅）")
+    if peers and len(peers) > 0:
+        peers_df = pd.DataFrame(peers)[["ticker", "name", "year_high"]].rename(columns={
+            "ticker": "代號", "name": "名稱", "year_high": "年漲幅%",
+        })
+        st.dataframe(
+            peers_df,
+            hide_index=True,
+            use_container_width=True,
+            column_config={"年漲幅%": st.column_config.NumberColumn(format="%+.1f")},
+        )
+        st.caption("💡 點代號可在站內 chart.html 切換到該檔。")
+    else:
+        st.caption("（此檔無 sector 資料或同 sector 內無其他個股）")
 
     st.divider()
     st.markdown("### 外部補充資源")

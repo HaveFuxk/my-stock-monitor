@@ -419,19 +419,34 @@ header {
       <p>可能是上櫃個股（.TWO，目前 chips downloader 只支援 TWSE 上市），或 SQLite DB 還沒累積到此檔。</p>
     </div>
 
-    <!-- 產業 / AI 摘要：Phase 3 placeholder -->
-    <div class="placeholder">
-      <span class="icon">🏭</span>
-      <p><strong>產業分析</strong>（同產業比較、市場定位、產品線）</p>
-      <p>需要 LLM API（Gemini / Claude）+ MOPS 公司基本資料抓取。</p>
-      <span class="roadmap-tag">Phase 3 開發中</span>
+    <!-- AI 智能摘要（Phase 3）-->
+    <div id="ai-summary-card" class="card" hidden>
+      <h3>🤖 AI 智能摘要 <span id="ai-generated-at" style="font-size: 0.7rem; color: var(--muted); font-weight: normal;"></span></h3>
+      <div id="ai-summary-content"></div>
+      <div style="margin-top: 0.5rem; font-size: 0.7rem; color: var(--muted);">
+        由 Gemini AI 根據 yfinance 業務描述生成，僅供參考。基本面變動可能未即時反映。
+      </div>
     </div>
 
-    <div class="placeholder">
+    <!-- 同產業 Top 5（Phase 3）-->
+    <div id="peers-card" class="card" hidden>
+      <h3>🏭 同產業 Top 5（依年漲幅）</h3>
+      <div id="peers-content"></div>
+    </div>
+
+    <!-- AI 摘要 fallback -->
+    <div id="ai-fallback" class="placeholder" hidden>
       <span class="icon">🤖</span>
-      <p><strong>AI 智能摘要</strong>（公司業務 / 主要客戶 / 投資觀點）</p>
-      <p>使用 LLM API 對個股做整合分析。</p>
-      <span class="roadmap-tag">Phase 3 開發中</span>
+      <p><strong>此檔暫無 AI 智能摘要</strong></p>
+      <p>AI 摘要僅對年漲幅 Top 100 飆股 + 大型股白名單生成。其他個股若需要分析，可參考下方外部資源。</p>
+    </div>
+
+    <!-- 進階產業分析：MOPS / 主要客戶 / 主要產品（仍 placeholder）-->
+    <div class="placeholder">
+      <span class="icon">📊</span>
+      <p><strong>深度產業分析</strong>（同業營收比較、主要客戶 / 產品 占比）</p>
+      <p>需要 MOPS 公開資訊觀測站抓取，反爬機制複雜，留待之後評估。</p>
+      <span class="roadmap-tag">未來規劃</span>
     </div>
   </div>
 
@@ -491,13 +506,15 @@ header {
   }
 
   // 向後相容：舊 schema 是純 array，新 schema 是 object
-  let candles, ma20, ma60, ma200, rsi14, macdLine, macdSignal, macdHist, info, chips;
+  let candles, ma20, ma60, ma200, rsi14, macdLine, macdSignal, macdHist, info, chips, aiSummary, peers;
   if (Array.isArray(payload)) {
     candles = payload;
     ma20 = ma60 = ma200 = null;
     rsi14 = macdLine = macdSignal = macdHist = null;
     info = null;
     chips = null;
+    aiSummary = null;
+    peers = null;
   } else {
     candles = payload.candles || [];
     ma20 = payload.ma20 || null;
@@ -509,6 +526,8 @@ header {
     macdHist = payload.macd_hist || null;
     info = payload.info || null;
     chips = payload.chips || null;
+    aiSummary = payload.ai_summary || null;
+    peers = payload.peers || null;
   }
 
   if (!candles.length) {
@@ -887,6 +906,62 @@ header {
     chipsCharts.forEach(c => c.timeScale().fitContent());
   } else {
     chipsFallback.hidden = false;
+  }
+
+  // ====== AI 智能摘要（Phase 3）======
+  const aiCard = document.getElementById("ai-summary-card");
+  const aiFallback = document.getElementById("ai-fallback");
+  if (aiSummary && aiSummary.business) {
+    aiCard.hidden = false;
+    document.getElementById("ai-generated-at").textContent =
+      aiSummary.generated_at ? `· 生成於 ${aiSummary.generated_at}` : "";
+
+    const sectionStyle = "background: var(--bg-deep); border: 1px solid var(--border); border-radius: 8px; padding: 0.85rem 1rem; margin-bottom: 0.6rem;";
+    const labelStyle = "font-size: 0.75rem; color: var(--muted); margin-bottom: 0.3rem; letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600;";
+    const textStyle = "font-size: 0.92rem; line-height: 1.7; color: var(--text);";
+
+    const escapeHtml = (s) => (s || "").replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+
+    document.getElementById("ai-summary-content").innerHTML = `
+      <div style="${sectionStyle}">
+        <div style="${labelStyle}">📦 業務分析</div>
+        <div style="${textStyle}">${escapeHtml(aiSummary.business)}</div>
+      </div>
+      <div style="${sectionStyle}">
+        <div style="${labelStyle}">⭐ 競爭優勢</div>
+        <div style="${textStyle}">${escapeHtml(aiSummary.advantage)}</div>
+      </div>
+      <div style="${sectionStyle}">
+        <div style="${labelStyle}">⚠️ 主要風險</div>
+        <div style="${textStyle}">${escapeHtml(aiSummary.risk)}</div>
+      </div>
+    `;
+  } else if (info) {
+    // 有 info 但沒 ai_summary（可能 GEMINI_API_KEY 沒設或暫時失敗）
+    aiFallback.hidden = false;
+  }
+  // 沒 info 的個股就完全不顯示 AI 區塊（連 fallback 都不顯示）
+
+  // ====== 同產業 Top 5 peers（Phase 3）======
+  const peersCard = document.getElementById("peers-card");
+  if (peers && peers.length > 0) {
+    peersCard.hidden = false;
+    const escapeAttr = (s) => (s || "").replace(/"/g, "&quot;");
+    const peerRows = peers.map(p => {
+      const yh = (p.year_high == null) ? "—" : `${p.year_high >= 0 ? "+" : ""}${p.year_high.toFixed(1)}%`;
+      const cls = (p.year_high || 0) >= 0 ? "up" : "down";
+      const url = `chart.html?ticker=${encodeURIComponent(p.ticker)}&name=${encodeURIComponent(p.name)}`;
+      return `
+        <a href="${url}" style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0.8rem; background: var(--bg-deep); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 0.4rem; text-decoration: none; color: var(--text); transition: background 0.15s;"
+           onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background='var(--bg-deep)'">
+          <span><strong style="color: var(--accent);">${p.ticker}</strong> ${p.name}</span>
+          <span class="${cls}" style="font-weight: 600; color: var(${cls === 'up' ? '--up' : '--down'});">${yh}</span>
+        </a>
+      `;
+    }).join("");
+    document.getElementById("peers-content").innerHTML = peerRows;
   }
 
   // Chart 2: 縮圖（概覽 tab）

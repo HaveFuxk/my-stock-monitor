@@ -50,6 +50,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-chips-tw-
 
+      # Phase 3：AI summary SQLite cache，14 天 TTL，跨 run 復用避免重新呼叫 LLM
+      - name: Cache AI Summary DB
+        uses: actions/cache@v4
+        with:
+          path: data/ai_summary.db
+          key: ${{ runner.os }}-ai-summary-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-ai-summary-
+
       - name: Environment Setup
         run: |
           sudo apt-get update
@@ -64,6 +73,9 @@ jobs:
           # REPORT_RECEIVER_EMAIL: ${{ secrets.REPORT_RECEIVER_EMAIL }}
           # TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           # TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Phase 3：Gemini Free tier API key（在 GH repo Settings → Secrets 設）
+          # 沒設時 ai_summary 模組會自動跳過，不阻塞 build
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PYTHONUNBUFFERED: "1"
         run: python main.py --market ${{ inputs.market_choice }}
 
