@@ -392,13 +392,34 @@ header {
 
   <!-- === Advanced (chips/sector) tab === -->
   <div id="tab-advanced" class="tab-panel" hidden>
-    <div class="placeholder">
-      <span class="icon">🔮</span>
-      <p><strong>籌碼分析</strong>（外資 / 投信 / 自營商買賣超）</p>
-      <p>需要 TWSE 三大法人 daily 資料源接入。</p>
-      <span class="roadmap-tag">Phase 2 開發中</span>
+    <!-- 籌碼面：三大法人買賣超 -->
+    <div id="chips-card" class="card" hidden>
+      <h3>三大法人買賣超（最近 60 個交易日）</h3>
+      <div id="chips-stats" class="stats-grid" style="margin-bottom: 1rem;"></div>
+
+      <div class="subchart-label">🌐 外資（含外陸資，不含外資自營商）</div>
+      <div id="chart-foreign" style="width: 100%; height: 130px;"></div>
+
+      <div class="subchart-label">🏦 投信</div>
+      <div id="chart-trust" style="width: 100%; height: 130px;"></div>
+
+      <div class="subchart-label">🏢 自營商</div>
+      <div id="chart-dealer" style="width: 100%; height: 130px;"></div>
+
+      <div class="external-links">
+        <span class="label">資料來源：</span>
+        <a href="https://www.twse.com.tw/zh/page/trading/fund/T86.html" target="_blank" rel="noopener">TWSE 三大法人買賣超日報 →</a>
+      </div>
     </div>
 
+    <!-- 籌碼面 fallback -->
+    <div id="chips-fallback" class="placeholder" hidden>
+      <span class="icon">📭</span>
+      <p><strong>此檔暫無三大法人資料</strong></p>
+      <p>可能是上櫃個股（.TWO，目前 chips downloader 只支援 TWSE 上市），或 SQLite DB 還沒累積到此檔。</p>
+    </div>
+
+    <!-- 產業 / AI 摘要：Phase 3 placeholder -->
     <div class="placeholder">
       <span class="icon">🏭</span>
       <p><strong>產業分析</strong>（同產業比較、市場定位、產品線）</p>
@@ -470,12 +491,13 @@ header {
   }
 
   // 向後相容：舊 schema 是純 array，新 schema 是 object
-  let candles, ma20, ma60, ma200, rsi14, macdLine, macdSignal, macdHist, info;
+  let candles, ma20, ma60, ma200, rsi14, macdLine, macdSignal, macdHist, info, chips;
   if (Array.isArray(payload)) {
     candles = payload;
     ma20 = ma60 = ma200 = null;
     rsi14 = macdLine = macdSignal = macdHist = null;
     info = null;
+    chips = null;
   } else {
     candles = payload.candles || [];
     ma20 = payload.ma20 || null;
@@ -486,6 +508,7 @@ header {
     macdSignal = payload.macd_signal || null;
     macdHist = payload.macd_hist || null;
     info = payload.info || null;
+    chips = payload.chips || null;
   }
 
   if (!candles.length) {
@@ -777,6 +800,93 @@ header {
         syncing = false;
       });
     });
+  }
+
+  // ====== 籌碼/產業 tab：三大法人買賣超 ======
+  const chipsCard = document.getElementById("chips-card");
+  const chipsFallback = document.getElementById("chips-fallback");
+  if (chips && chips.length > 0) {
+    chipsCard.hidden = false;
+
+    // 計算近 N 天累計（張數 = 股數 / 1000）
+    const sumNet = (key) => chips.reduce((s, r) => s + (r[key] || 0), 0);
+    const fmtLot = (v) => {
+      if (v == null) return "—";
+      const lot = v / 1000;  // 股 → 張
+      const cls = lot >= 0 ? "up" : "down";
+      const abs = Math.abs(lot);
+      const fmt = abs >= 10000
+        ? (lot / 10000).toFixed(1) + "萬張"
+        : Math.round(lot).toLocaleString() + "張";
+      return `<div class="value ${cls}">${lot >= 0 ? "+" : ""}${fmt}</div>`;
+    };
+    const days = chips.length;
+    document.getElementById("chips-stats").innerHTML = `
+      <div class="stat"><div class="label">近 ${days} 日外資</div>${fmtLot(sumNet("foreign_net"))}</div>
+      <div class="stat"><div class="label">近 ${days} 日投信</div>${fmtLot(sumNet("trust_net"))}</div>
+      <div class="stat"><div class="label">近 ${days} 日自營</div>${fmtLot(sumNet("dealer_net"))}</div>
+      <div class="stat"><div class="label">合計</div>${fmtLot(sumNet("total_net"))}</div>
+    `;
+
+    const buildHistData = (key, posColor, negColor) => {
+      const arr = [];
+      for (const r of chips) {
+        if (r[key] == null) continue;
+        const lot = r[key] / 1000;  // 股 → 張
+        arr.push({
+          time: r.date,
+          value: lot,
+          color: lot >= 0 ? posColor : negColor,
+        });
+      }
+      return arr;
+    };
+
+    const baseChartCfg = {
+      ...chartTheme,
+      timeScale: { ...chartTheme.timeScale, timeVisible: false, visible: false },
+      rightPriceScale: {
+        ...chartTheme.rightPriceScale,
+        scaleMargins: { top: 0.1, bottom: 0.1 },
+      },
+    };
+    const colorUp = isDark ? "#ef4444" : "#d73a49";
+    const colorDown = isDark ? "#22c55e" : "#16a34a";
+
+    // 外資
+    const chartForeign = LightweightCharts.createChart(document.getElementById("chart-foreign"), baseChartCfg);
+    chartForeign.addHistogramSeries({ priceLineVisible: false, base: 0 })
+      .setData(buildHistData("foreign_net", colorUp, colorDown));
+
+    // 投信
+    const chartTrust = LightweightCharts.createChart(document.getElementById("chart-trust"), baseChartCfg);
+    chartTrust.addHistogramSeries({ priceLineVisible: false, base: 0 })
+      .setData(buildHistData("trust_net", colorUp, colorDown));
+
+    // 自營商（最後一張顯示時間軸）
+    const chartDealer = LightweightCharts.createChart(document.getElementById("chart-dealer"), {
+      ...baseChartCfg,
+      timeScale: { ...chartTheme.timeScale, timeVisible: false, visible: true },
+    });
+    chartDealer.addHistogramSeries({ priceLineVisible: false, base: 0 })
+      .setData(buildHistData("dealer_net", colorUp, colorDown));
+
+    // 三圖時間軸同步
+    const chipsCharts = [chartForeign, chartTrust, chartDealer];
+    let chipsSync = false;
+    chipsCharts.forEach(src => {
+      src.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (chipsSync || !range) return;
+        chipsSync = true;
+        chipsCharts.forEach(dst => {
+          if (dst !== src) dst.timeScale().setVisibleLogicalRange(range);
+        });
+        chipsSync = false;
+      });
+    });
+    chipsCharts.forEach(c => c.timeScale().fitContent());
+  } else {
+    chipsFallback.hidden = false;
   }
 
   // Chart 2: 縮圖（概覽 tab）

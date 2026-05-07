@@ -40,6 +40,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-stock-tw-
 
+      # Phase 2：三大法人 SQLite，跨 run 累積歷史。每次 run 都更新 key 強制存新版，
+      # restore-keys 用前綴 fallback 撈最近一份，確保不丟舊資料。
+      - name: Cache Chips DB
+        uses: actions/cache@v4
+        with:
+          path: data/chips.db
+          key: ${{ runner.os }}-chips-tw-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-chips-tw-
+
       - name: Environment Setup
         run: |
           sudo apt-get update

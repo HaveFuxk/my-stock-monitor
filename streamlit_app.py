@@ -266,6 +266,7 @@ rsi14 = payload.get("rsi14")
 macd_line = payload.get("macd_line")
 macd_signal = payload.get("macd_signal")
 macd_hist = payload.get("macd_hist")
+chips = payload.get("chips")
 
 if not candles_list:
     st.warning("此檔無 K 線資料")
@@ -528,14 +529,95 @@ with tab_technical:
 
 # ---------- Tab: 籌碼/產業 ----------
 with tab_advanced:
-    st.markdown("### 🔮 籌碼分析")
-    st.info(
-        "**Phase 2 開發中**\n\n"
-        "計劃接入 TWSE 三大法人 daily 買賣超資料，提供：\n"
-        "- 外資 / 投信 / 自營商每日買賣超走勢\n"
-        "- 分點進出概況\n"
-        "- 持股集中度（張數分布）"
-    )
+    st.markdown("### 🔮 籌碼分析（三大法人買賣超）")
+
+    if chips and len(chips) > 0:
+        chips_df = pd.DataFrame(chips)
+        chips_df["date"] = pd.to_datetime(chips_df["date"])
+        # 股 → 張（lot）
+        for col in ["foreign_net", "trust_net", "dealer_net", "total_net"]:
+            chips_df[f"{col}_lot"] = chips_df[col].fillna(0) / 1000
+
+        days = len(chips_df)
+        st.caption(f"資料來源：TWSE 三大法人買賣超日報，最近 {days} 個交易日")
+
+        # 摘要指標卡（張數）
+        def fmt_lot_metric(total_lots):
+            if abs(total_lots) >= 10000:
+                return f"{total_lots / 10000:+.1f} 萬張"
+            return f"{total_lots:+,.0f} 張"
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric(f"近 {days} 日外資", fmt_lot_metric(chips_df["foreign_net_lot"].sum()))
+        c2.metric(f"近 {days} 日投信", fmt_lot_metric(chips_df["trust_net_lot"].sum()))
+        c3.metric(f"近 {days} 日自營", fmt_lot_metric(chips_df["dealer_net_lot"].sum()))
+        c4.metric(f"近 {days} 日合計", fmt_lot_metric(chips_df["total_net_lot"].sum()))
+
+        # 三圖 stacked subplots
+        from plotly.subplots import make_subplots
+        import plotly.graph_objects as go
+
+        fig_chips = make_subplots(
+            rows=3, cols=1, shared_xaxes=True,
+            vertical_spacing=0.05,
+            subplot_titles=("🌐 外資（不含外資自營商）", "🏦 投信", "🏢 自營商"),
+        )
+
+        def add_chip_bar(row, col_name, name):
+            colors = [
+                "#d73a49" if (v or 0) >= 0 else "#16a34a"
+                for v in chips_df[col_name]
+            ]
+            fig_chips.add_trace(go.Bar(
+                x=chips_df["date"], y=chips_df[col_name], name=name,
+                marker_color=colors, showlegend=False,
+                hovertemplate="%{x|%Y-%m-%d}<br>%{y:+,.0f} 張<extra></extra>",
+            ), row=row, col=1)
+
+        add_chip_bar(1, "foreign_net_lot", "外資")
+        add_chip_bar(2, "trust_net_lot", "投信")
+        add_chip_bar(3, "dealer_net_lot", "自營商")
+
+        fig_chips.update_layout(
+            height=620,
+            margin=dict(l=20, r=20, t=40, b=20),
+            template="plotly_white",
+        )
+        fig_chips.update_yaxes(title_text="張", title_standoff=2)
+        fig_chips.update_annotations(font_size=12)
+        st.plotly_chart(fig_chips, use_container_width=True)
+
+        # 詳細表格
+        with st.expander("📊 每日詳細資料"):
+            display_df = chips_df.sort_values("date", ascending=False)[
+                ["date", "foreign_net_lot", "trust_net_lot", "dealer_net_lot", "total_net_lot"]
+            ].rename(columns={
+                "date": "日期",
+                "foreign_net_lot": "外資（張）",
+                "trust_net_lot": "投信（張）",
+                "dealer_net_lot": "自營（張）",
+                "total_net_lot": "合計（張）",
+            })
+            display_df["日期"] = display_df["日期"].dt.strftime("%Y-%m-%d")
+            st.dataframe(
+                display_df, hide_index=True, use_container_width=True, height=400,
+                column_config={
+                    "外資（張）": st.column_config.NumberColumn(format="%+,.0f"),
+                    "投信（張）": st.column_config.NumberColumn(format="%+,.0f"),
+                    "自營（張）": st.column_config.NumberColumn(format="%+,.0f"),
+                    "合計（張）": st.column_config.NumberColumn(format="%+,.0f"),
+                },
+            )
+
+        st.caption(
+            "資料來源：[TWSE 三大法人買賣超日報](https://www.twse.com.tw/zh/page/trading/fund/T86.html)"
+        )
+    else:
+        st.info(
+            "**此檔暫無三大法人資料**\n\n"
+            "可能是上櫃個股（.TWO，目前 chips downloader 只支援 TWSE 上市），"
+            "或 SQLite DB 還沒累積到此檔。"
+        )
 
     st.divider()
     st.markdown("### 🏭 產業分析")
@@ -548,7 +630,7 @@ with tab_advanced:
     )
 
     st.divider()
-    st.markdown("### 暫時可用的外部資源")
+    st.markdown("### 外部補充資源")
     st.markdown(
         f"- [玩股網籌碼面](https://www.wantgoo.com/stock/{clean_code}/major-investors)\n"
         f"- [Yahoo 股市籌碼分析](https://tw.stock.yahoo.com/quote/{pick}/broker-trading)\n"

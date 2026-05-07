@@ -373,23 +373,28 @@ def _fetch_yf_info(ticker):
 
 
 def _export_kline_json(report_df, market_id="tw-share", top_n=None,
-                      history_days=500, info_top_n=100):
+                      history_days=500, info_top_n=100, chips_days=60):
     """
     從 data/<market_id>/dayK/*.csv 中挑出 report_df 中的個股，
     每檔 export 成 dist/data/<safe_id>.json。
 
-    JSON schema (Phase 1 升級):
+    JSON schema (Phase 2):
         {
-          "candles": [{time, open, high, low, close, volume}, ...],
-          "ma20":  [None, ..., 612.5, 614.0, ...],   // 對齊 candles 同長度
-          "ma60":  [...],
-          "ma200": [...],
-          "info":  {longName, sector, industry, marketCap, trailingPE, ...} | null
+          "candles":     [{time, open, high, low, close, volume}, ...],
+          "ma20":        [None, ..., 612.5, 614.0, ...],   // 對齊 candles 同長度
+          "ma60":        [...],
+          "ma200":       [...],
+          "rsi14":       [...],
+          "macd_line":   [...],
+          "macd_signal": [...],
+          "macd_hist":   [...],
+          "info":        {longName, sector, industry, marketCap, trailingPE, ...} | null,
+          "chips":       [{date, foreign_net, trust_net, dealer_net, total_net}, ...] | null
         }
 
     top_n=None 表示 export 全部 K 線（飆股清單每個代號都該點得到）。
     info_top_n=100 表示只對 Year_High Top 100 撈 yfinance.info（避免拖慢 build）。
-    其餘檔的 info 欄位為 None，UI 端顯示「外部連結」fallback。
+    chips_days=60 表示每檔 query 最近 60 個交易日的三大法人時序（從 SQLite）。
 
     safe_id = ticker.replace('.', '_').replace('/', '_')
     回傳 manifest list。
@@ -429,10 +434,25 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
         info_tickers = set(df_ranked.head(info_top_n)["Ticker"].astype(str).tolist())
         print(f"   - 將對 Top {len(info_tickers)} 飆股撈 yfinance.info（基本面）")
 
+    # 預載 chips downloader（若 SQLite 不存在就跳過）
+    chips_query_fn = None
+    if chips_days and chips_days > 0:
+        try:
+            import downloader_chips
+            from pathlib import Path as _P
+            if _P("data/chips.db").exists():
+                chips_query_fn = downloader_chips.query_chips
+                print(f"   - chips DB 偵測到，每檔將寫入最近 {chips_days} 天三大法人時序")
+            else:
+                print(f"   - chips DB 不存在，跳過三大法人整合（需先跑 downloader_chips.main()）")
+        except ImportError:
+            print(f"   - 找不到 downloader_chips 模組，跳過")
+
     manifest = []
     skipped = 0
     info_fetched = 0
     info_failed = 0
+    chips_filled = 0
     for _, row in df_ranked.iterrows():
         ticker = str(row["Ticker"])
         name = str(row.get("Full_Name", ticker))
@@ -502,6 +522,14 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
                 else:
                     info_failed += 1
 
+            # 撈三大法人時序（從 SQLite，已先載過的話）
+            chips = None
+            if chips_query_fn is not None:
+                chips_rows = chips_query_fn(ticker, days=chips_days) or []
+                if chips_rows:
+                    chips = chips_rows
+                    chips_filled += 1
+
             payload = {
                 "candles": records,
                 "ma20": ma20,
@@ -512,6 +540,7 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
                 "macd_signal": macd_signal,
                 "macd_hist": macd_hist,
                 "info": info,
+                "chips": chips,
             }
 
             safe_id = ticker.replace(".", "_").replace("/", "_")
@@ -528,6 +557,7 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
                 "week_high": float(row["Week_High"]) if pd.notna(row.get("Week_High")) else None,
                 "samples": len(records),
                 "has_info": info is not None,
+                "has_chips": chips is not None,
                 "sector": info.get("sector") if info else None,
                 "industry": info.get("industry") if info else None,
             })
@@ -543,6 +573,8 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
     print(f"   - K 線 JSON：{len(manifest)} 檔 → dist/data/（跳過 {skipped} 檔）")
     if info_tickers:
         print(f"   - yfinance.info：成功 {info_fetched} 檔 / 失敗 {info_failed} 檔")
+    if chips_query_fn is not None:
+        print(f"   - 三大法人 chips：填入 {chips_filled} 檔")
     return manifest
 
 

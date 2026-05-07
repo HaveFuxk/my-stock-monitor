@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 
 # 導入自定義模組
 import downloader_tw
+import downloader_chips
 import analyzer
 import notifier
 import build_web
@@ -48,6 +49,15 @@ def run_market_pipeline(market_id: str, market_name: str, emoji: str):
 
     except Exception as e:
         print(f"❌ {market_name} 數據下載過程發生嚴重異常: {e}")
+
+    # --- Step 1.5: 三大法人資料更新（Phase 2）---
+    if market_id == "tw-share":
+        print(f"\n【Step 1.5: 三大法人】更新 {market_name} 三大法人買賣超 SQLite...")
+        try:
+            fetched, total = downloader_chips.update_chips_db(days_back=60, max_fetches=80)
+            print(f"📊 [chips] 探詢 {len(fetched)} 天，新寫入 {total} 筆")
+        except Exception as e:
+            print(f"⚠️ [chips] downloader 失敗（不影響主 pipeline）: {e}")
 
     # --- Step 2: 數據分析 & 繪圖 ---
     print(f"\n【Step 2: 矩陣分析】正在計算 {market_name} 動能分布並生成圖表...")
