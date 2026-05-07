@@ -21,8 +21,3 @@ akshare
 # GH Actions main pipeline 會多裝這幾個（~20 秒），不影響功能。
 streamlit>=1.32
 plotly>=5.18
-
-# --- Phase 3：Gemini AI 智能摘要 ---
-# Free tier，需在 GH Secrets 設 GEMINI_API_KEY
-# 沒設時 ai_summary 模組會自動跳過
-google-generativeai>=0.8

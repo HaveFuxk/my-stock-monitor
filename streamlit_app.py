@@ -267,7 +267,6 @@ macd_line = payload.get("macd_line")
 macd_signal = payload.get("macd_signal")
 macd_hist = payload.get("macd_hist")
 chips = payload.get("chips")
-ai_summary_data = payload.get("ai_summary")
 peers = payload.get("peers")
 
 if not candles_list:
@@ -620,34 +619,6 @@ with tab_advanced:
             "可能是上櫃個股（.TWO，目前 chips downloader 只支援 TWSE 上市），"
             "或 SQLite DB 還沒累積到此檔。"
         )
-
-    st.divider()
-
-    # === AI 智能摘要（Phase 3）===
-    st.markdown("### 🤖 AI 智能摘要")
-    if ai_summary_data and ai_summary_data.get("business"):
-        gen_at = ai_summary_data.get("generated_at")
-        if gen_at:
-            st.caption(f"由 Gemini AI 根據 yfinance 業務描述生成，生成於 {gen_at}")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown("**📦 業務分析**")
-            st.write(ai_summary_data["business"])
-        with c2:
-            st.markdown("**⭐ 競爭優勢**")
-            st.write(ai_summary_data["advantage"])
-        with c3:
-            st.markdown("**⚠️ 主要風險**")
-            st.write(ai_summary_data["risk"])
-        st.caption("⚠️ AI 生成內容僅供參考，基本面變動可能未即時反映。")
-    elif info:
-        st.info(
-            "**此檔暫無 AI 智能摘要**\n\n"
-            "可能是 GEMINI_API_KEY 未設或 Gemini API 暫時無回應。"
-            "AI 摘要僅對年漲幅 Top 100 飆股 + 大型股白名單生成。"
-        )
-    else:
-        st.caption("（此檔無 yfinance 業務描述，無法生成 AI 摘要）")
 
     st.divider()
 

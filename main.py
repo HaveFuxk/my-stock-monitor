@@ -12,7 +12,6 @@ from datetime import datetime, timedelta
 # 導入自定義模組
 import downloader_tw
 import downloader_chips
-import ai_summary
 import analyzer
 import notifier
 import build_web
@@ -80,40 +79,6 @@ def run_market_pipeline(market_id: str, market_name: str, emoji: str):
             text_reports=text_reports,
             stats=stats,
         )
-
-        # --- Step 3.5: AI 智能摘要批次預生成（Phase 3）---
-        # build_web 階段也會 cache-first call，這裡是「批次熱啟動」確保每次 build 用最新 cache。
-        # 沒設 GEMINI_API_KEY 會自動跳過。
-        if os.getenv("GEMINI_API_KEY") and report_df is not None and "Year_High" in report_df.columns:
-            print(f"\n【Step 3.5: AI 摘要】Gemini 對 Top 100 + 大型股白名單批次生成...")
-            try:
-                # 撈 Top 100 + 白名單的 ticker，先撈一次 yfinance.info 給 ai_summary 用
-                import yfinance as yf
-                df_ranked = report_df.dropna(subset=["Year_High"]).sort_values("Year_High", ascending=False)
-                top100_tickers = set(df_ranked.head(100)["Ticker"].astype(str).tolist())
-                wl = top100_tickers | (set(df_ranked["Ticker"].astype(str).tolist()) & build_web.INFO_WHITELIST_TW)
-                print(f"   - 共 {len(wl)} 檔需要 AI 摘要候選")
-
-                pairs = []
-                for ticker in wl:
-                    cached = ai_summary._get_cache(ticker)
-                    if cached:
-                        continue  # cache hit，跳過 API call 也跳過 yfinance call
-                    try:
-                        info = yf.Ticker(ticker).info or {}
-                        if info.get("longBusinessSummary"):
-                            pairs.append((ticker, info))
-                    except Exception:
-                        pass
-                if pairs:
-                    print(f"   - 將對 {len(pairs)} 檔尚無 cache 的個股呼叫 Gemini")
-                    ai_summary.batch_generate(pairs, max_calls=120)
-                else:
-                    print(f"   - 全部已有 cache 或無 longBusinessSummary，跳過")
-            except Exception as e:
-                print(f"⚠️ AI 摘要批次失敗（不影響後續 build）: {e}")
-        else:
-            print(f"\n【Step 3.5: AI 摘要】跳過（GEMINI_API_KEY 未設）")
 
         # --- Step 4: 產靜態站 dist/（給 Cloudflare Pages 部署）---
         print(f"\n【Step 4: 靜態站打包】產出 dist/ 給 Cloudflare Pages...")

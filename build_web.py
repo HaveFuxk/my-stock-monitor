@@ -14,7 +14,6 @@ build_web.py — 把 analyzer 跑出來的 PNG 與文字報表打包成靜態網
      - 不會重新跑 analyzer
 """
 import json
-import os
 import shutil
 import sys
 from datetime import datetime, timedelta
@@ -395,8 +394,7 @@ INFO_WHITELIST_TW = {
 
 
 def _export_kline_json(report_df, market_id="tw-share", top_n=None,
-                      history_days=500, info_top_n=100, chips_days=60,
-                      enable_ai_summary=True):
+                      history_days=500, info_top_n=100, chips_days=60):
     """
     從 data/<market_id>/dayK/*.csv 中挑出 report_df 中的個股，
     每檔 export 成 dist/data/<safe_id>.json。
@@ -475,28 +473,11 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
         except ImportError:
             print(f"   - 找不到 downloader_chips 模組，跳過")
 
-    # 預載 AI summary 模組（Phase 3）
-    ai_summary_fn = None
-    if enable_ai_summary:
-        try:
-            import ai_summary as _ai_summary
-            from pathlib import Path as _P2
-            ai_db_exists = _P2("data/ai_summary.db").exists()
-            if os.getenv("GEMINI_API_KEY") or ai_db_exists:
-                ai_summary_fn = _ai_summary.get_summary
-                key_status = "set" if os.getenv("GEMINI_API_KEY") else "unset, cache-only"
-                print(f"   - AI summary 模組偵測到（GEMINI_API_KEY={key_status}）")
-            else:
-                print(f"   - GEMINI_API_KEY 未設且無 ai_summary cache，跳過 AI 摘要")
-        except ImportError:
-            print(f"   - 找不到 ai_summary 模組，跳過")
-
     manifest = []
     skipped = 0
     info_fetched = 0
     info_failed = 0
     chips_filled = 0
-    ai_filled = 0
     for _, row in df_ranked.iterrows():
         ticker = str(row["Ticker"])
         name = str(row.get("Full_Name", ticker))
@@ -574,13 +555,6 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
                     chips = chips_rows
                     chips_filled += 1
 
-            # AI 智能摘要（cache-first；只對有 info 的個股）
-            ai_summary_data = None
-            if ai_summary_fn is not None and info is not None:
-                ai_summary_data = ai_summary_fn(ticker, info)
-                if ai_summary_data:
-                    ai_filled += 1
-
             payload = {
                 "candles": records,
                 "ma20": ma20,
@@ -592,7 +566,6 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
                 "macd_hist": macd_hist,
                 "info": info,
                 "chips": chips,
-                "ai_summary": ai_summary_data,
             }
 
             safe_id = ticker.replace(".", "_").replace("/", "_")
@@ -610,7 +583,6 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
                 "samples": len(records),
                 "has_info": info is not None,
                 "has_chips": chips is not None,
-                "has_ai_summary": ai_summary_data is not None,
                 "sector": info.get("sector") if info else None,
                 "industry": info.get("industry") if info else None,
             })
@@ -632,8 +604,6 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
         print(f"   - yfinance.info：成功 {info_fetched} 檔 / 失敗 {info_failed} 檔")
     if chips_query_fn is not None:
         print(f"   - 三大法人 chips：填入 {chips_filled} 檔")
-    if ai_summary_fn is not None:
-        print(f"   - AI summary：填入 {ai_filled} 檔")
     return manifest
 
 
