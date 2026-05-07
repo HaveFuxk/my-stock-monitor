@@ -69,10 +69,13 @@ jobs:
 
       # 直接把 dist/（main.py 內 build_web 步驟產出）部署到 Cloudflare Pages
       # 用 CF API token + Account ID 透過 wrangler，無需 contents: write
+      #
+      # --commit-message 強制覆寫，避免 wrangler 自動抓 git log 含中文時
+      # 撞 CF API "Invalid UTF-8" 8000111 錯誤（已知 wrangler/CF API 互動 bug）
       - name: Deploy dist/ to Cloudflare Pages
         if: success()
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=my-stock-monitor --branch=main
+          command: pages deploy dist --project-name=my-stock-monitor --branch=main --commit-message="auto-deploy ${{ github.sha }}" --commit-hash=${{ github.sha }}
