@@ -1034,15 +1034,57 @@ function buildMeta() {
   };
 }
 
+// 將 manifest + macro 推導為「題材敘事」alert banner — 對映圖一公告式語氣。
+//   結構：[主軸 法人多空] : [法人三方明細] · 題材聚焦 [Top 2 sector] · 飆股訊號 [創新高/月動能 檔數]
 function renderAlert() {
   const arr = STATE.manifest;
-  const total = arr.length;
-  const top = arr[0];
-  const topName = top ? `${top.ticker} ${top.name || ""}（年漲 ${fmt(top.year_high, 1)}%）` : "—";
-  const meta = buildMeta();
-  const stamp = meta.buildTime ? ` · 更新 ${meta.buildTime}` : "";
-  document.getElementById("alertText").innerHTML =
-    `<strong>📈 全市場動能掃描</strong> · 共 ${total} 檔追蹤 · 年漲冠軍：${topName}${stamp}`;
+  const macro = STATE.macro;
+  const el = document.getElementById("alertText");
+  if (!arr.length) {
+    el.textContent = "資料載入中…";
+    return;
+  }
+
+  // (1) 主軸 emoji 與標題：依三大法人合計買賣超決定多空語氣
+  const sign = (n) => n == null ? "—" : (n >= 0 ? "+" : "") + n;
+  let head, body;
+  if (macro?.institutional?.grand_total?.net != null) {
+    const totYi = Math.round(macro.institutional.grand_total.net / 1e8);
+    const f = macro.institutional.foreign?.net;
+    const t = macro.institutional.trust?.net;
+    const d = macro.institutional.dealer_total?.net;
+    const fYi = f != null ? Math.round(f / 1e8) : null;
+    const tYi = t != null ? Math.round(t / 1e8) : null;
+    const dYi = d != null ? Math.round(d / 1e8) : null;
+    if (totYi >= 100) head = `📈 三大法人作多 +${totYi} 億`;
+    else if (totYi <= -100) head = `📉 三大法人賣超 ${totYi} 億`;
+    else head = `⚖️ 法人籌碼分歧 ${sign(totYi)} 億`;
+    body = `外資 ${sign(fYi)} / 投信 ${sign(tYi)} / 自營 ${sign(dYi)} 億`;
+  } else {
+    head = "📊 全市場動能掃描";
+    body = `${arr.length.toLocaleString()} 檔追蹤`;
+  }
+
+  // (2) 題材聚焦：用 month_high 平均最高的 Top 2 sector
+  const bySector = {};
+  arr.filter(x => x.sector && x.month_high != null).forEach(x => {
+    (bySector[x.sector] ||= []).push(x.month_high);
+  });
+  const hotSec = Object.entries(bySector)
+    .map(([s, vs]) => ({ s, zh: SECTOR_ZH[s] || s, avg: vs.reduce((a,b)=>a+b,0)/vs.length, n: vs.length }))
+    .sort((a,b) => b.avg - a.avg)
+    .slice(0, 2);
+  const themeTag = hotSec.length
+    ? `題材聚焦：${hotSec.map(x => `<strong style="color:var(--gold)">${x.zh}</strong>`).join("、")}`
+    : "";
+
+  // (3) 飆股訊號計數（與下方 #signals section 同口徑：年漲 ≥100% / 月漲 ≥30%）
+  const yearHigh = arr.filter(x => (x.year_high || 0) >= 100).length;
+  const monthHigh = arr.filter(x => (x.month_high || 0) >= 30).length;
+  const sigTxt = `飆股訊號 <strong style="color:var(--text-strong)">${yearHigh}</strong> 創年新高、<strong style="color:var(--text-strong)">${monthHigh}</strong> 月動能爆發`;
+
+  el.innerHTML =
+    `<strong>${head}</strong>：${body}　·　${themeTag}　·　${sigTxt}`;
 }
 
 // ====================== Top stats cards ======================
