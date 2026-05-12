@@ -1140,20 +1140,18 @@ function renderStats() {
 }
 
 // ====================== Spotlight news cards ======================
-// 從 data/news.json 取最新新聞，每個 source 一張卡（共 3 張），第 4 張為 Premium 鎖卡。
-// 圖一對映：Yahoo 股市 / 鉅亨網 / CMoney（我們改成 鉅亨網/Yahoo/自由財經）+ Premium 限定。
+// 從 data/news.json 渲染全部新聞（每 source ~6 篇，共 ~18 篇），無 Premium 鎖卡。
+// 卡片依 published_at 由新到舊排序，每張依 source_slug 套顏色（藍/黃/紫）。
 function renderSpotlight() {
   const news = STATE.news;
-  // 三個來源固定順序與顏色（對映圖一三張卡顏色：藍/黃/紫）
-  const slots = [
-    { slug: "cnyes", name: "鉅亨網", cls: "" },
-    { slug: "yahoo", name: "Yahoo 股市", cls: "src-2" },
-    { slug: "ltn",   name: "自由財經", cls: "src-3" },
-  ];
+  const items = (news.items || []).slice();  // 已在後端按 published_at 倒序
 
-  function pickLatest(slug) {
-    return (news.items || []).find(it => it.source_slug === slug);
-  }
+  const SOURCE_META = {
+    cnyes: { name: "鉅亨網",      cls: "" },
+    yahoo: { name: "Yahoo 股市",  cls: "src-2" },
+    ltn:   { name: "自由財經",    cls: "src-3" },
+  };
+
   function fmtDate(iso) {
     if (!iso) return "";
     try {
@@ -1163,8 +1161,8 @@ function renderSpotlight() {
   }
   function deriveTags(item) {
     if (item.tags && item.tags.length) return item.tags.slice(0, 2);
-    // RSS 來源無結構化 tag — 從標題拉出簡單關鍵字（取 2 個常見產業詞）
-    const KEYS = ["半導體","AI","台積電","記憶體","電子代工","面板","金融","散熱","ETF","關稅","BBU","CPO","伺服器"];
+    // RSS 來源無結構化 tag — 從標題拉出簡單關鍵字
+    const KEYS = ["半導體","AI","台積電","記憶體","電子代工","面板","金融","散熱","ETF","關稅","BBU","CPO","伺服器","電動車","軍工","綠能","房市","ESG"];
     const found = [];
     for (const k of KEYS) {
       if (item.title && item.title.includes(k)) found.push(k);
@@ -1173,22 +1171,19 @@ function renderSpotlight() {
     return found.length ? found : [item.category || "財經"];
   }
 
-  const cards = slots.map(slot => {
-    const it = pickLatest(slot.slug);
-    if (!it) {
-      // 該 source 抓不到 → 印灰色 placeholder
-      return `
-        <div class="spot-card" style="opacity:0.5">
-          <div class="src ${slot.cls}">${slot.name}</div>
-          <h3 style="color:var(--muted)">（無最新新聞）</h3>
-          <p>該來源本次未抓到資料，請稍後重新整理。</p>
-        </div>`;
-    }
+  const grid = document.getElementById("spotlightGrid");
+  if (!items.length) {
+    grid.innerHTML = `<div class="loading" style="grid-column:1/-1">（news.json 無資料 — 跑 python downloader_news.py 後重新整理）</div>`;
+    return;
+  }
+
+  const cards = items.map(it => {
+    const meta = SOURCE_META[it.source_slug] || { name: it.source || "新聞", cls: "" };
     const tags = deriveTags(it);
     return `
       <a class="spot-card" href="${it.link}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
         <div class="meta-row">
-          <span class="src ${slot.cls}">${slot.name}</span>
+          <span class="src ${meta.cls}">${meta.name}</span>
           <span>📅 ${fmtDate(it.published_at)}</span>
         </div>
         <h3>${it.title}</h3>
@@ -1199,14 +1194,8 @@ function renderSpotlight() {
       </a>
     `;
   }).join("");
-  const premium = `
-    <div class="spot-card premium">
-      <h3>Premium 限定</h3>
-      <p>一個月一杯咖啡支持作者，解鎖 AI 智慧分析模組</p>
-      <a class="btn" href="https://github.com/HaveFuxk/my-stock-monitor" rel="noopener">立即升級</a>
-    </div>
-  `;
-  document.getElementById("spotlightGrid").innerHTML = cards + premium;
+
+  grid.innerHTML = cards;
 }
 
 // ====================== Date pills (7-day snapshot switcher) ======================
