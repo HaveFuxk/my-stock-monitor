@@ -717,22 +717,17 @@ table.dt td.num.warn { color: var(--gold); }
     <div class="update-meta" id="updateMeta">資料更新中…</div>
   </section>
 
-  <!-- ============ Spotlight (sector spotlight cards) ============ -->
+  <!-- ============ Spotlight (financial news cards) ============ -->
   <div class="section-card">
     <div class="section-head">
       <div class="section-title">
         <span class="title-icon">📰</span>
         <div>
-          <h2>產業焦點導航</h2>
-          <span class="section-sub">本日強勢產業，掌握動能聚焦</span>
+          <h2>產業焦點導航 <span class="section-badge" style="margin-left:0.4rem;color:var(--gold);border-color:rgba(245,158,11,0.3);background:rgba(245,158,11,0.1)">即時新聞</span></h2>
+          <span class="section-sub">📅 即時抓取財經新聞 · 鉅亨網 / Yahoo / 自由財經</span>
         </div>
       </div>
-      <div class="date-pills" id="datePills">
-        <button class="date-pill active">最新</button>
-        <button class="date-pill">週</button>
-        <button class="date-pill">月</button>
-        <button class="date-pill">年</button>
-      </div>
+      <div class="date-pills" id="datePills"><!-- JS render: 7 天歷史 --></div>
     </div>
     <div class="section-body">
       <div class="spotlight-grid" id="spotlightGrid"><!-- JS render --></div>
@@ -841,45 +836,66 @@ table.dt td.num.warn { color: var(--gold); }
   <section id="chips">
     <div class="twin-cols">
 
+      <!-- 左：三大法人當日總買賣超 -->
       <div class="section-card">
         <div class="section-head">
           <div class="section-title">
             <span class="title-icon" style="color: var(--accent-2);">👥</span>
             <div>
-              <h2>三大法人 · 籌碼覆蓋</h2>
-              <span class="section-sub">含三大法人資料的個股統計</span>
+              <h2>三大法人</h2>
+              <span class="section-sub">當日全市場買賣金額（單位：億元）</span>
             </div>
           </div>
-          <span class="section-badge" id="chipsCovDate">—</span>
+          <span class="section-badge" id="instDateBadge">—</span>
         </div>
-        <div class="section-body" id="chipsCoverBody">
+        <div class="section-body" id="instBody">
           <div class="loading">資料載入中…</div>
         </div>
       </div>
 
-      <div class="section-card" id="signals">
+      <!-- 右：融資融券變化 -->
+      <div class="section-card">
         <div class="section-head">
           <div class="section-title">
-            <span class="title-icon" style="color: var(--warn);">📄</span>
+            <span class="title-icon" style="color: var(--gold);">📈</span>
             <div>
-              <h2>重大技術訊號</h2>
-              <span class="section-sub">創新高 / 高週轉 / 強動能</span>
+              <h2>資券變化</h2>
+              <span class="section-sub">融資融券當日餘額（單位：張）</span>
             </div>
           </div>
+          <span class="section-badge" id="marginDateBadge">—</span>
         </div>
-        <div class="section-body">
-          <div class="signal-tags" id="signalTags">
-            <button class="sig-tag active t-1" data-sig="all">全部 <span id="sigAll">0</span></button>
-            <button class="sig-tag t-2" data-sig="year">創年新高</button>
-            <button class="sig-tag t-3" data-sig="month">月動能爆發</button>
-            <button class="sig-tag t-4" data-sig="week">週飆股</button>
-          </div>
-          <div id="signalList" style="margin-top: 0.5rem;">
-            <div class="loading">資料載入中…</div>
-          </div>
+        <div class="section-body" id="marginBody">
+          <div class="loading">資料載入中…</div>
         </div>
       </div>
 
+    </div>
+  </section>
+
+  <!-- ============ Technical signals (alerts) ============ -->
+  <section id="signals">
+    <div class="section-card">
+      <div class="section-head">
+        <div class="section-title">
+          <span class="title-icon" style="color: var(--warn);">📄</span>
+          <div>
+            <h2>重大技術訊號</h2>
+            <span class="section-sub">創年新高 / 月動能爆發 / 週飆股</span>
+          </div>
+        </div>
+        <div class="signal-tags" id="signalTags">
+          <button class="sig-tag active t-1" data-sig="all">全部 <span id="sigAll">0</span></button>
+          <button class="sig-tag t-2" data-sig="year">創年新高</button>
+          <button class="sig-tag t-3" data-sig="month">月動能爆發</button>
+          <button class="sig-tag t-4" data-sig="week">週飆股</button>
+        </div>
+      </div>
+      <div class="section-body">
+        <div id="signalList">
+          <div class="loading">資料載入中…</div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -927,6 +943,11 @@ const SECTOR_ZH = {
 
 const STATE = {
   manifest: [],
+  manifestLatest: [],       // 今日 manifest 副本，切歷史快照時 fallback 回來
+  news: { items: [] },
+  macro: null,
+  snapshots: null,          // { dates: ["2026-05-12", ...] }
+  activeSnapshot: null,
   strong: { market: "all", period: "week_x" },
   chips: { who: "foreign", days: 10 },
   heat: { period: "month_high" },
@@ -949,18 +970,39 @@ function classifyMarket(ticker) {
 }
 
 // ====================== Load & init ======================
-async function loadManifest() {
+async function fetchJson(url, fallback = null) {
   try {
-    const res = await fetch("data/manifest.json", { cache: "no-store" });
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
-    STATE.manifest = await res.json();
+    return await res.json();
   } catch (err) {
+    console.warn(`[fetchJson] ${url} fail:`, err.message);
+    return fallback;
+  }
+}
+
+async function loadAll() {
+  // 4 個 endpoint 並行 fetch，個別失敗不擋住其他 section render
+  const [manifest, news, macro, snapshots] = await Promise.all([
+    fetchJson("data/manifest.json", null),
+    fetchJson("data/news.json", { items: [] }),
+    fetchJson("data/macro.json", null),
+    fetchJson("data/snapshots/index.json", null),
+  ]);
+
+  if (!manifest) {
     document.getElementById("alertText").textContent =
       "⚠️ 找不到 data/manifest.json — 請先跑 python main.py --market tw-share 產出資料";
     document.querySelectorAll(".loading").forEach(el => el.textContent = "（無資料）");
-    console.error("[manifest] load failed", err);
-    return;
+  } else {
+    STATE.manifest = manifest;
+    STATE.manifestLatest = manifest;
   }
+  STATE.news = news || { items: [] };
+  STATE.macro = macro;
+  STATE.snapshots = snapshots;
+  STATE.activeSnapshot = snapshots?.dates?.[0] || null;
+
   renderAll();
 }
 
@@ -968,10 +1010,12 @@ function renderAll() {
   renderAlert();
   renderStats();
   renderSpotlight();
+  renderDatePills();
   renderStrong();
   renderChips();
   renderHeatmap();
-  renderChipsCoverage();
+  renderInstitutional();
+  renderMargin();
   renderSignals();
   renderDistribution();
 }
@@ -1053,52 +1097,129 @@ function renderStats() {
     `資料更新於 ${stamp}（台北時間）${sampleHint} · 市場 ${meta.marketId}`;
 }
 
-// ====================== Spotlight cards ======================
+// ====================== Spotlight news cards ======================
+// 從 data/news.json 取最新新聞，每個 source 一張卡（共 3 張），第 4 張為 Premium 鎖卡。
+// 圖一對映：Yahoo 股市 / 鉅亨網 / CMoney（我們改成 鉅亨網/Yahoo/自由財經）+ Premium 限定。
 function renderSpotlight() {
-  const arr = STATE.manifest;
-  const periodKey = "year_high"; // 預設用年漲動能挑產業冠軍
-  const bySector = {};
-  arr.filter(x => x.sector && x[periodKey] != null).forEach(x => {
-    (bySector[x.sector] ||= []).push(x);
-  });
-  // 平均年漲排序，取前 3 個 sector
-  const top3 = Object.entries(bySector)
-    .map(([sec, list]) => ({
-      sec,
-      zh: SECTOR_ZH[sec] || sec,
-      list: list.sort((a,b) => (b[periodKey]||0) - (a[periodKey]||0)),
-      avg: list.reduce((s,x) => s + (x[periodKey]||0), 0) / list.length,
-    }))
-    .sort((a,b) => b.avg - a.avg)
-    .slice(0, 3);
+  const news = STATE.news;
+  // 三個來源固定順序與顏色（對映圖一三張卡顏色：藍/黃/紫）
+  const slots = [
+    { slug: "cnyes", name: "鉅亨網", cls: "" },
+    { slug: "yahoo", name: "Yahoo 股市", cls: "src-2" },
+    { slug: "ltn",   name: "自由財經", cls: "src-3" },
+  ];
 
-  const colorClass = ["", "src-2", "src-3"];
-  const titleHints = ["🚀 動能領頭族群", "⚡ 法人加碼焦點", "💎 中長線優選"];
-  const cards = top3.map((s, i) => {
-    const champ = s.list[0];
-    const top5 = s.list.slice(0, 5).map(x =>
-      `<a class="row-link" href="${chartUrl(x)}"><strong style="color:var(--accent-2)">${x.ticker.split(".")[0]}</strong> ${x.name||""}</a>`
-    ).join(" · ");
+  function pickLatest(slug) {
+    return (news.items || []).find(it => it.source_slug === slug);
+  }
+  function fmtDate(iso) {
+    if (!iso) return "";
+    try {
+      const d = new Date(iso);
+      return `${d.getMonth()+1}月${d.getDate()}日`;
+    } catch (e) { return ""; }
+  }
+  function deriveTags(item) {
+    if (item.tags && item.tags.length) return item.tags.slice(0, 2);
+    // RSS 來源無結構化 tag — 從標題拉出簡單關鍵字（取 2 個常見產業詞）
+    const KEYS = ["半導體","AI","台積電","記憶體","電子代工","面板","金融","散熱","ETF","關稅","BBU","CPO","伺服器"];
+    const found = [];
+    for (const k of KEYS) {
+      if (item.title && item.title.includes(k)) found.push(k);
+      if (found.length >= 2) break;
+    }
+    return found.length ? found : [item.category || "財經"];
+  }
+
+  const cards = slots.map(slot => {
+    const it = pickLatest(slot.slug);
+    if (!it) {
+      // 該 source 抓不到 → 印灰色 placeholder
+      return `
+        <div class="spot-card" style="opacity:0.5">
+          <div class="src ${slot.cls}">${slot.name}</div>
+          <h3 style="color:var(--muted)">（無最新新聞）</h3>
+          <p>該來源本次未抓到資料，請稍後重新整理。</p>
+        </div>`;
+    }
+    const tags = deriveTags(it);
     return `
-      <div class="spot-card">
-        <div class="src ${colorClass[i]}">產業 / ${s.zh}</div>
-        <h3>${titleHints[i]} ${s.zh}</h3>
-        <p>${s.zh}類股年漲平均 ${fmt(s.avg, 1)}%，冠軍 <strong style="color:var(--text-strong)">${champ.ticker.split(".")[0]} ${champ.name||""}</strong> 年漲 ${fmt(champ[periodKey], 1)}%。族群熱門股：${top5}</p>
-        <div class="spot-tags">
-          ${s.list.slice(0,2).map(x => `<span class="spot-tag">${x.industry || x.sector}</span>`).join("")}
-          <span class="spot-tag">${s.list.length} 檔</span>
+      <a class="spot-card" href="${it.link}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+        <div class="meta-row">
+          <span class="src ${slot.cls}">${slot.name}</span>
+          <span>📅 ${fmtDate(it.published_at)}</span>
         </div>
-      </div>
+        <h3>${it.title}</h3>
+        <p>${it.summary || "（無摘要）"}</p>
+        <div class="spot-tags">
+          ${tags.map(t => `<span class="spot-tag">📊 ${t}</span>`).join("")}
+        </div>
+      </a>
     `;
   }).join("");
   const premium = `
     <div class="spot-card premium">
-      <h3>AI 智慧分析</h3>
-      <p>整合產業關聯、籌碼變化、新聞情緒的即時題材引擎，即將推出。</p>
-      <a class="btn" href="https://github.com/HaveFuxk/my-stock-monitor" rel="noopener">關注進度</a>
+      <h3>Premium 限定</h3>
+      <p>一個月一杯咖啡支持作者，解鎖 AI 智慧分析模組</p>
+      <a class="btn" href="https://github.com/HaveFuxk/my-stock-monitor" rel="noopener">立即升級</a>
     </div>
   `;
   document.getElementById("spotlightGrid").innerHTML = cards + premium;
+}
+
+// ====================== Date pills (7-day snapshot switcher) ======================
+function renderDatePills() {
+  const snap = STATE.snapshots;
+  const el = document.getElementById("datePills");
+  if (!el) return;
+  if (!snap || !snap.dates || !snap.dates.length) {
+    el.innerHTML = `<button class="date-pill active">今日</button>`;
+    return;
+  }
+  const dates = snap.dates.slice(0, 7);
+  const cur = STATE.activeSnapshot || dates[0];
+  function shortDate(iso) {
+    // "2026-05-12" -> "05/12"
+    return iso.slice(5).replace("-", "/");
+  }
+  el.innerHTML = dates.map((d, i) => `
+    <button class="date-pill ${d === cur ? "active" : ""}" data-date="${d}">${shortDate(d)}</button>
+  `).join("");
+  el.querySelectorAll(".date-pill").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const d = btn.dataset.date;
+      if (!d || d === STATE.activeSnapshot) return;
+      el.querySelectorAll(".date-pill").forEach(x => x.classList.remove("active"));
+      btn.classList.add("active");
+      await switchSnapshot(d);
+    });
+  });
+}
+
+async function switchSnapshot(date) {
+  // 切到歷史快照：fetch snapshots/<date>.json，覆蓋 STATE.manifest，重 render 全部用 manifest 的 section
+  STATE.activeSnapshot = date;
+  // dates[0] 是今天，可直接用現成 manifest；其他日期 fetch snapshot
+  const latest = STATE.snapshots?.dates?.[0];
+  if (date === latest && STATE.manifestLatest) {
+    STATE.manifest = STATE.manifestLatest;
+  } else {
+    try {
+      const res = await fetch(`data/snapshots/${date}.json`, { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      STATE.manifest = await res.json();
+    } catch (err) {
+      console.warn("[snapshot] fetch failed for", date, err);
+      return;
+    }
+  }
+  // 切日期後重 render manifest-driven 的所有 section（不含 news / macro / pill 本身）
+  renderAlert();
+  renderStats();
+  renderStrong();
+  renderChips();
+  renderHeatmap();
+  renderSignals();
 }
 
 // ====================== Strong stocks table ======================
@@ -1188,40 +1309,140 @@ function renderHeatmap() {
 }
 
 // ====================== Chips coverage panel ======================
-function renderChipsCoverage() {
-  const arr = STATE.manifest;
-  const withChips = arr.filter(x => x.has_chips);
-  const total = arr.length;
-  const pct = total ? (withChips.length / total * 100) : 0;
+// 把 TWSE 回傳的「元」格式換算成億元（除以 1e8）— 顯示用
+function toYi(n, digits = 0) {
+  if (n == null) return "—";
+  const v = n / 1e8;
+  return (v >= 0 ? "" : "") + v.toFixed(digits) + " 億";
+}
+function netClass(n) { return n == null ? "" : (n >= 0 ? "up" : "down"); }
+function fmtDateBadge(yyyymmdd) {
+  if (!yyyymmdd || yyyymmdd.length !== 8) return "—";
+  return `${yyyymmdd.slice(0,4)}-${yyyymmdd.slice(4,6)}-${yyyymmdd.slice(6,8)}`;
+}
 
-  // 把 withChips 按 sector 分組
-  const bySec = {};
-  withChips.forEach(x => {
-    if (!x.sector) return;
-    (bySec[x.sector] ||= []).push(x);
-  });
-  const rows = Object.entries(bySec)
-    .map(([sec, list]) => ({ sec, zh: SECTOR_ZH[sec] || sec, count: list.length }))
-    .sort((a,b) => b.count - a.count)
-    .slice(0, 6);
+// ====================== Institutional (三大法人當日總買賣超) ======================
+function renderInstitutional() {
+  const body = document.getElementById("instBody");
+  const dateBadge = document.getElementById("instDateBadge");
+  if (!body) return;
+  const macro = STATE.macro;
+  if (!macro || !macro.institutional) {
+    body.innerHTML = `<div class="loading" style="color:var(--muted)">（macro.json 無法人資料 — 跑 python downloader_macro.py 後重新整理）</div>`;
+    dateBadge.textContent = "—";
+    return;
+  }
+  const inst = macro.institutional;
+  dateBadge.textContent = fmtDateBadge(macro.institutional_date || macro.date);
 
-  const html = `
+  // 對應圖一順序：外資 / 投信 / 自營（合計）/ 三大法人合計
+  const rows = [
+    { name: "外資", data: inst.foreign },
+    { name: "投信", data: inst.trust },
+    { name: "自營商", data: inst.dealer_total },
+    { name: "三大合計", data: inst.grand_total, bold: true },
+  ];
+  body.innerHTML = `
     <table class="dt">
-      <thead><tr><th>項目</th><th></th><th style="text-align:right">數字</th></tr></thead>
+      <thead>
+        <tr>
+          <th>法人別</th>
+          <th style="text-align:right">買進</th>
+          <th style="text-align:right">賣出</th>
+          <th style="text-align:right">買賣超</th>
+        </tr>
+      </thead>
       <tbody>
-        <tr><td colspan="2">總追蹤檔數</td><td class="num">${total.toLocaleString()}</td></tr>
-        <tr><td colspan="2">含三大法人時序</td><td class="num up">${withChips.length.toLocaleString()}（${pct.toFixed(1)}%）</td></tr>
-        <tr><td colspan="2">含基本面 info</td><td class="num">${arr.filter(x=>x.has_info).length.toLocaleString()}</td></tr>
-        <tr><td colspan="3" style="padding-top:1rem;color:var(--muted);font-size:0.78rem">籌碼分布前 6 大產業</td></tr>
-        ${rows.map(r => `<tr><td colspan="2">${r.zh}</td><td class="num">${r.count}</td></tr>`).join("")}
+        ${rows.map(r => {
+          if (!r.data) return "";
+          const wt = r.bold ? "font-weight:700;color:var(--text-strong)" : "";
+          return `
+            <tr>
+              <td style="${wt}">${r.name}</td>
+              <td class="num" style="${wt}">${toYi(r.data.buy)}</td>
+              <td class="num" style="${wt}">${toYi(r.data.sell)}</td>
+              <td class="num ${netClass(r.data.net)}" style="font-weight:700">${toYi(r.data.net)}</td>
+            </tr>
+          `;
+        }).join("")}
       </tbody>
     </table>
-    <p style="margin:0.85rem 0 0;font-size:0.78rem;color:var(--muted);line-height:1.55">
-      💡 點任一個股代號可進入 K 線頁，查看其外資 / 投信 / 自營近 60 日買賣超時序圖。
+    <p style="margin:0.85rem 0 0;font-size:0.78rem;color:var(--muted)">
+      💡 自營商 = 自行買賣 + 避險合計。資料來源：TWSE BFI82U。
     </p>
   `;
-  document.getElementById("chipsCoverBody").innerHTML = html;
-  document.getElementById("chipsCovDate").textContent = `更新 ${new Date().toLocaleDateString("zh-Hant")}`;
+}
+
+// ====================== Margin (融資融券當日餘額變化) ======================
+function renderMargin() {
+  const body = document.getElementById("marginBody");
+  const dateBadge = document.getElementById("marginDateBadge");
+  if (!body) return;
+  const macro = STATE.macro;
+  if (!macro || !macro.margin) {
+    body.innerHTML = `<div class="loading" style="color:var(--muted)">（macro.json 無資券資料 — TWSE 此 endpoint 可能延後到 17:00 才出）</div>`;
+    dateBadge.textContent = "—";
+    return;
+  }
+  const m = macro.margin;
+  dateBadge.textContent = fmtDateBadge(macro.margin_date || macro.date);
+
+  function fmtZhang(n) {
+    if (n == null) return "—";
+    // TWSE 回傳單位「股」，換算成「張」（除以 1000）
+    const v = n / 1000;
+    if (Math.abs(v) >= 10000) return (v/10000).toFixed(1) + " 萬張";
+    return v.toLocaleString("zh-Hant", { maximumFractionDigits: 0 }) + " 張";
+  }
+  function fmtChange(n) {
+    if (n == null) return "—";
+    const v = n / 1000;
+    const sign = v >= 0 ? "+" : "";
+    if (Math.abs(v) >= 10000) return sign + (v/10000).toFixed(1) + " 萬張";
+    return sign + v.toLocaleString("zh-Hant", { maximumFractionDigits: 0 }) + " 張";
+  }
+  const rows = [
+    { name: "融資", data: m.financing },
+    { name: "融券", data: m.shorting },
+  ];
+  body.innerHTML = `
+    <table class="dt">
+      <thead>
+        <tr>
+          <th>項目</th>
+          <th style="text-align:right">買進</th>
+          <th style="text-align:right">賣出</th>
+          <th style="text-align:right">餘額變化</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => {
+          if (!r.data) return "";
+          return `
+            <tr>
+              <td>${r.name}</td>
+              <td class="num">${fmtZhang(r.data.buy)}</td>
+              <td class="num">${fmtZhang(r.data.sell)}</td>
+              <td class="num ${netClass(r.data.change)}" style="font-weight:700">${fmtChange(r.data.change)}</td>
+            </tr>
+          `;
+        }).join("")}
+        <tr><td colspan="4" style="padding-top:0.75rem;color:var(--muted);font-size:0.78rem">本日餘額</td></tr>
+        ${rows.map(r => {
+          if (!r.data) return "";
+          return `
+            <tr>
+              <td style="color:var(--muted)">${r.name}餘額</td>
+              <td class="num" colspan="3" style="text-align:right;font-weight:600">${fmtZhang(r.data.today_balance)}（前日 ${fmtZhang(r.data.prev_balance)}）</td>
+            </tr>
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+    <p style="margin:0.85rem 0 0;font-size:0.78rem;color:var(--muted)">
+      💡 資料來源：TWSE MI_MARGN（信用交易統計）。1 張 = 1,000 股。
+    </p>
+  `;
 }
 
 // ====================== Signals (technical alerts) ======================
@@ -1392,7 +1613,7 @@ function bindControls() {
 
 document.addEventListener("DOMContentLoaded", () => {
   bindControls();
-  loadManifest();
+  loadAll();
 });
 </script>
 </body>

@@ -669,6 +669,11 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     # 6) Export K 線 JSON 給 chart.html 用
     kline_manifest = _export_kline_json(report_df, market_id=market_id)
 
+    # 7) Wave 2/3：總體籌碼 + 新聞 + 歷史快照
+    _build_macro_data()
+    _build_news_data()
+    snap_count = _snapshot_today_manifest()
+
     print("\n" + "=" * 60)
     print(f"🌐 [build_web] 靜態站已產出於 {DIST_DIR.resolve()}")
     print(f"   - index.html ({len(html)} chars)")
@@ -676,8 +681,59 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     print(f"   - text_reports 段數：{len(text_reports or {})}")
     print(f"   - chart.html: {'✅ 已複製' if chart_src.exists() else '❌ 未複製'}")
     print(f"   - K 線 JSON：{len(kline_manifest)} 檔 → dist/data/")
+    print(f"   - snapshot index: {snap_count} 天歷史")
     print(f"   - meta 已寫入 {META_FILE}")
     print("=" * 60 + "\n")
+
+
+def _build_macro_data():
+    """跑 downloader_macro，寫 dist/data/macro.json。容錯：抓不到不擋 build。"""
+    try:
+        import downloader_macro
+        downloader_macro.build_macro_json()
+    except Exception as e:
+        print(f"⚠️ [build_web] macro 抓取失敗（不影響其他資料）: {e}")
+
+
+def _build_news_data():
+    """跑 downloader_news，寫 dist/data/news.json。容錯：抓不到不擋 build。"""
+    try:
+        import downloader_news
+        downloader_news.build_news_json()
+    except Exception as e:
+        print(f"⚠️ [build_web] news 抓取失敗（不影響其他資料）: {e}")
+
+
+def _snapshot_today_manifest() -> int:
+    """
+    把今日 manifest.json 複製到 dist/data/snapshots/YYYY-MM-DD.json，
+    並維護 snapshots/index.json 列出最近 14 天（前端 pill 只用 7 天，多留備援）。
+
+    Cloudflare Pages 每次 deploy 是把整個 dist/ 上傳，所以 snapshots/
+    需要在 build 時手動把舊檔保留下來。GH Actions cache 已涵蓋 data/ 與 chips.db，
+    但 dist/data/snapshots/ 不在 cache 內 → 用 dist/data/snapshots/index.json 作為唯一索引，
+    遇到 deploy 後若 Cloudflare 拉的歷史副本是新一輪 build 的最新一日，會逐天累積。
+
+    回傳：snapshots/index.json 內列出的歷史日期數。
+    """
+    src = DIST_DIR / "data" / "manifest.json"
+    snap_dir = DIST_DIR / "data" / "snapshots"
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    today = datetime.now().strftime("%Y-%m-%d")
+    if src.exists():
+        dst = snap_dir / f"{today}.json"
+        shutil.copy2(src, dst)
+    # 重建 index.json
+    dates = sorted(
+        [p.stem for p in snap_dir.glob("*.json") if p.stem != "index"],
+        reverse=True,
+    )[:14]
+    (snap_dir / "index.json").write_text(
+        json.dumps({"dates": dates, "generated_at": datetime.now().isoformat()},
+                   ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return len(dates)
 
 
 def standalone(market_id="tw-share"):
