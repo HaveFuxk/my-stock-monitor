@@ -592,8 +592,8 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
 
     manifest.sort(key=lambda x: x.get("year_high") or -999, reverse=True)
 
-    # Phase 3：算同 sector / industry peers，回填到每個個股 JSON 的 peers 欄位
-    _inject_peers(manifest, out_dir, top_n_per_sector=5)
+    # Phase 4：算同 industry peers（v2，候選池限 .TW），回填到每個個股 JSON 的 peers 欄位
+    _inject_peers(manifest, out_dir, top_n=5)
 
     (out_dir / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
