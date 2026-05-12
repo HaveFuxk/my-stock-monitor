@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>智慧台股動能地圖 — my-stock-monitor</title>
+<meta name="description" content="台股全市場動能監控 — 強勢股榜、產業熱力、三大法人、技術訊號">
+<meta name="build-time" content="__UPDATED_AT__">
+<meta name="sample-count" content="__SAMPLE_COUNT__">
+<meta name="market-id" content="__MARKET_ID__">
+<style>
+:root {
+  --bg: #0a0e14;
+  --bg-deep: #070a0f;
+  --card: #131720;
+  --card-2: #1a1f2b;
+  --card-hover: #1f2532;
+  --text: #d4d8e0;
+  --text-strong: #f3f4f6;
+  --muted: #6b7280;
+  --muted-2: #4b5563;
+  --border: #1f2937;
+  --border-strong: #374151;
+  --accent: #06b6d4;
+  --accent-2: #22d3ee;
+  --accent-soft: #064e6f;
+  --up: #ef4444;
+  --up-soft: rgba(239, 68, 68, 0.12);
+  --down: #22c55e;
+  --down-soft: rgba(34, 197, 94, 0.12);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.12);
+  --gold: #f59e0b;
+  --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.2);
+  --shadow-strong: 0 4px 24px rgba(0,0,0,0.5);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 1480px; margin: 0 auto; padding: 0 1.25rem 4rem; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-2); }
+
+/* === Top Header (logo + search + icons) === */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  white-space: nowrap;
+}
+.logo .logo-mark {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent) 0%, #3b82f6 100%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  color: #fff;
+  font-weight: 800;
+}
+.logo .logo-sub {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.search-box {
+  flex: 1;
+  max-width: 420px;
+  margin-left: auto;
+  position: relative;
+}
+.search-box input {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.9rem;
+  padding: 0.55rem 0.85rem 0.55rem 2.2rem;
+  border-radius: 8px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.search-box input:focus {
+  border-color: var(--accent);
+  background: var(--card-2);
+}
+.search-box::before {
+  content: "🔍";
+  position: absolute;
+  left: 0.7rem; top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.85rem;
+  opacity: 0.6;
+}
+.search-kbd {
+  position: absolute;
+  right: 0.6rem; top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.7rem;
+  color: var(--muted);
+  border: 1px solid var(--border-strong);
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  background: var(--bg-deep);
+}
+.topbar-icons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.topbar-icons a {
+  width: 36px; height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1rem;
+  color: var(--muted);
+  transition: background 0.15s, color 0.15s;
+}
+.topbar-icons a:hover { background: var(--card); color: var(--text-strong); }
+.topbar-icons a.crown { color: var(--gold); }
+
+/* === Nav tabs === */
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+  -webkit-overflow-scrolling: touch;
+}
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.85rem 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* === Alert banner === */
+.alert-banner {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.05) 100%);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--text-strong);
+  padding: 0.7rem 1rem;
+  border-radius: 10px;
+  font-size: 0.92rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.alert-banner .alert-icon {
+  background: rgba(239, 68, 68, 0.25);
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.alert-banner .alert-close {
+  margin-left: auto;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0.25rem 0.5rem;
+  font-size: 1.1rem;
+}
+.alert-banner .alert-close:hover { color: var(--text-strong); }
+
+/* === Index cards grid === */
+.index-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+}
+.idx-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.idx-card:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+.idx-card .idx-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.3rem;
+}
+.idx-card .idx-name {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.idx-card .idx-delta {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.idx-card .idx-delta.up { color: var(--up); }
+.idx-card .idx-delta.down { color: var(--down); }
+.idx-card .idx-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.idx-card .idx-pct {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+.idx-card .idx-pct.up { color: var(--up); }
+.idx-card .idx-pct.down { color: var(--down); }
+.update-meta {
+  text-align: right;
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: 0.4rem 0 1.4rem;
+}
+
+/* === Section header === */
+.section-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.section-head {
+  padding: 1rem 1.25rem 0.5rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.section-title .title-icon {
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  background: var(--card-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  border: 1px solid var(--border);
+}
+.section-title h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-strong);
+}
+.section-title .section-sub {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 0.15rem;
+}
+.section-badge {
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+.section-body { padding: 0.5rem 1.25rem 1.25rem; }
+
+/* === Date timeline pills === */
+.date-pills {
+  display: inline-flex;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem;
+  gap: 0.15rem;
+}
+.date-pill {
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+}
+.date-pill:hover { color: var(--text); }
+.date-pill.active { background: var(--accent-soft); color: var(--accent-2); }
+
+/* === Spotlight cards (news-like) === */
+.spotlight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.85rem;
+  margin-top: 0.6rem;
+}
+.spot-card {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+  min-height: 215px;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.spot-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.spot-card .src {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--card-2);
+  color: var(--accent-2);
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  font-weight: 600;
+  width: fit-content;
+}
+.spot-card .src.src-2 { color: var(--gold); }
+.spot-card .src.src-3 { color: #a78bfa; }
+.spot-card .meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.spot-card h3 {
+  font-size: 1rem;
+  margin: 0;
+  color: var(--text-strong);
+  font-weight: 600;
+}
+.spot-card p {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0;
+  line-height: 1.55;
+  flex: 1;
+}
+.spot-tags {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+}
+.spot-tag {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  background: var(--card-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.spot-card.premium {
+  background: linear-gradient(135deg, #0e1726 0%, #131720 60%);
+  border: 1px solid var(--accent-soft);
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.spot-card.premium::before {
+  content: "🔒";
+  font-size: 1.5rem;
+  color: var(--accent-2);
+  background: rgba(6, 182, 212, 0.15);
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.3rem;
+}
+.spot-card.premium h3 {
+  color: var(--text-strong);
+  font-weight: 700;
+}
+.spot-card.premium p { text-align: center; color: var(--muted); }
+.spot-card.premium .btn {
+  background: var(--accent);
+  color: #fff;
+  padding: 0.5rem 1.1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 0.6rem;
+}
+.spot-card.premium .btn:hover { background: var(--accent-2); color: #04293a; }
+
+/* === Twin column layout === */
+.twin-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+/* === Tables === */
+.tbl-wrap {
+  overflow-x: auto;
+}
+table.dt {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+table.dt th {
+  text-align: left;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+table.dt td {
+  padding: 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+table.dt tr:last-child td { border-bottom: none; }
+table.dt tr:hover td { background: var(--card-2); }
+table.dt td.rank {
+  color: var(--muted);
+  font-size: 0.85rem;
+  width: 2.2rem;
+}
+table.dt td.rank.top { color: var(--gold); font-weight: 700; }
+table.dt .stock-cell { line-height: 1.25; }
+table.dt .stock-cell .ticker {
+  font-family: ui-monospace, "SF Mono", monospace;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+table.dt .stock-cell .name {
+  display: block;
+  color: var(--text-strong);
+  font-weight: 500;
+}
+table.dt td.num {
+  text-align: right;
+  font-weight: 600;
+  white-space: nowrap;
+}
+table.dt td.num.up { color: var(--up); }
+table.dt td.num.down { color: var(--down); }
+table.dt td.num.warn { color: var(--gold); }
+.row-link { color: inherit; }
+.row-link:hover .name { color: var(--accent); }
+
+/* === Toggle buttons (segment) === */
+.seg {
+  display: inline-flex;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.2rem;
+  gap: 0.15rem;
+  margin-bottom: 0.5rem;
+}
+.seg-btn {
+  background: transparent;
+  border: none;
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 6px;
+  font-family: inherit;
+}
+.seg-btn:hover { color: var(--text); }
+.seg-btn.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.seg-btn.active.gold { background: var(--gold); color: #1a1a1a; }
+.seg-btn.active.red { background: var(--up); }
+
+.seg-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+.seg-row .seg { margin-bottom: 0; }
+
+/* === Sector heatmap === */
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.6rem;
+}
+.heat-cell {
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.heat-cell:hover { transform: translateY(-1px); border-color: var(--accent); }
+.heat-cell .hc-name {
+  color: var(--text-strong);
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+.heat-cell .hc-count {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-bottom: 0.4rem;
+}
+.heat-cell .hc-pct {
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.heat-cell .hc-pct.up { color: var(--up); }
+.heat-cell .hc-pct.down { color: var(--down); }
+.heat-cell::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 3px;
+  background: var(--up);
+  opacity: 0.8;
+}
+.heat-cell.is-down::after { background: var(--down); }
+
+/* === Major alerts (signals) === */
+.signal-tags {
+  display: inline-flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.sig-tag {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 6px;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+}
+.sig-tag:hover { color: var(--text); }
+.sig-tag.active.t-1 { background: rgba(245, 158, 11, 0.25); color: var(--gold); border-color: rgba(245, 158, 11, 0.4); }
+.sig-tag.active.t-2 { background: rgba(239, 68, 68, 0.2); color: var(--up); border-color: rgba(239, 68, 68, 0.4); }
+.sig-tag.active.t-3 { background: rgba(6, 182, 212, 0.2); color: var(--accent-2); border-color: rgba(6, 182, 212, 0.4); }
+.sig-tag.active.t-4 { background: rgba(167, 139, 250, 0.2); color: #a78bfa; border-color: rgba(167, 139, 250, 0.4); }
+
+.signal-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.signal-row:last-child { border-bottom: none; }
+.signal-row .sig-badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--gold);
+  flex-shrink: 0;
+  font-weight: 600;
+}
+.signal-row .sig-badge.r { background: rgba(239, 68, 68, 0.2); color: var(--up); }
+.signal-row .sig-badge.c { background: rgba(6, 182, 212, 0.2); color: var(--accent-2); }
+.signal-row .sig-badge.v { background: rgba(167, 139, 250, 0.2); color: #a78bfa; }
+.signal-row .sig-text {
+  flex: 1;
+  color: var(--text-strong);
+  font-size: 0.92rem;
+}
+.signal-row .sig-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+/* === Loading state === */
+.loading {
+  text-align: center;
+  padding: 2rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.loading::before {
+  content: "";
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* === Footer === */
+.footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 2.5rem;
+  padding: 1.5rem 0 0;
+  border-top: 1px solid var(--border);
+}
+
+/* === Responsive === */
+@media (max-width: 1100px) {
+  .index-grid { grid-template-columns: repeat(2, 1fr); }
+  .spotlight-grid { grid-template-columns: repeat(2, 1fr); }
+  .twin-cols { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .container { padding: 0 0.75rem 4rem; }
+  .topbar { flex-wrap: wrap; }
+  .search-box { max-width: none; order: 99; width: 100%; margin: 0.5rem 0 0; }
+  .index-grid { grid-template-columns: 1fr 1fr; }
+  .spotlight-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ============ Top bar ============ -->
+  <div class="topbar">
+    <div class="logo">
+      <span class="logo-mark">智</span>
+      <span>智慧台股動能地圖<br><span class="logo-sub">Taiwan Stock Momentum Map</span></span>
+    </div>
+    <div class="search-box">
+      <input id="searchInput" type="search" placeholder="搜尋股票代號或名稱..." autocomplete="off">
+      <span class="search-kbd">⌘ K</span>
+    </div>
+    <div class="topbar-icons">
+      <a href="https://github.com/HaveFuxk/my-stock-monitor" rel="noopener" title="GitHub">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0a12 12 0 00-3.79 23.4c.6.11.82-.26.82-.58v-2.16c-3.34.72-4.04-1.42-4.04-1.42-.55-1.38-1.34-1.75-1.34-1.75-1.1-.75.08-.74.08-.74 1.21.09 1.85 1.25 1.85 1.25 1.07 1.84 2.81 1.3 3.5.99.1-.78.42-1.3.76-1.6-2.66-.3-5.46-1.33-5.46-5.93 0-1.3.46-2.37 1.23-3.21-.12-.31-.53-1.52.12-3.17 0 0 1-.32 3.3 1.23a11.5 11.5 0 016 0c2.28-1.55 3.29-1.23 3.29-1.23.66 1.65.24 2.86.12 3.17.76.84 1.23 1.91 1.23 3.21 0 4.61-2.81 5.62-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.83.58A12 12 0 0012 0z"/></svg>
+      </a>
+      <a href="javascript:void(0)" class="crown" title="即將推出 — AI 分析模組">👑</a>
+      <a href="https://github.com/HaveFuxk/my-stock-monitor#readme" rel="noopener" title="說明">❔</a>
+    </div>
+  </div>
+
+  <!-- ============ Nav tabs ============ -->
+  <nav class="tabs" id="navTabs">
+    <button class="tab-btn active" data-anchor="focus">每日焦點</button>
+    <button class="tab-btn" data-anchor="strong">強勢股榜</button>
+    <button class="tab-btn" data-anchor="heatmap">產業熱力</button>
+    <button class="tab-btn" data-anchor="chips">三大法人</button>
+    <button class="tab-btn" data-anchor="signals">技術訊號</button>
+    <button class="tab-btn" data-anchor="distribution">動能分布</button>
+  </nav>
+
+  <!-- ============ Alert banner ============ -->
+  <div class="alert-banner" id="alertBanner">
+    <span class="alert-icon">📢</span>
+    <span id="alertText">資料載入中…</span>
+    <span class="alert-close" onclick="this.parentElement.style.display='none'">×</span>
+  </div>
+
+  <!-- ============ 8 index/stat cards ============ -->
+  <section id="focus">
+    <div class="index-grid" id="statsGrid"><!-- JS render --></div>
+    <div class="update-meta" id="updateMeta">資料更新中…</div>
+  </section>
+
+  <!-- ============ Spotlight (sector spotlight cards) ============ -->
+  <div class="section-card">
+    <div class="section-head">
+      <div class="section-title">
+        <span class="title-icon">📰</span>
+        <div>
+          <h2>產業焦點導航</h2>
+          <span class="section-sub">本日強勢產業，掌握動能聚焦</span>
+        </div>
+      </div>
+      <div class="date-pills" id="datePills">
+        <button class="date-pill active">最新</button>
+        <button class="date-pill">週</button>
+        <button class="date-pill">月</button>
+        <button class="date-pill">年</button>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="spotlight-grid" id="spotlightGrid"><!-- JS render --></div>
+    </div>
+  </div>
+
+  <!-- ============ Strong stocks + Chips twin ============ -->
+  <section id="strong">
+    <div class="twin-cols">
+
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-title">
+            <span class="title-icon" style="color: var(--up);">🔥</span>
+            <div>
+              <h2>本週強勢股</h2>
+              <span class="section-sub">依漲幅排序</span>
+            </div>
+          </div>
+          <span class="section-badge" id="strongCount">— 檔</span>
+        </div>
+        <div class="section-body">
+          <div class="seg-row">
+            <div class="seg" data-group="market">
+              <button class="seg-btn active" data-val="all">全部</button>
+              <button class="seg-btn" data-val="tw">上市</button>
+              <button class="seg-btn" data-val="two">上櫃</button>
+            </div>
+            <div class="seg" data-group="period">
+              <button class="seg-btn" data-val="week">日</button>
+              <button class="seg-btn active red" data-val="week_x">週</button>
+              <button class="seg-btn" data-val="month">月</button>
+              <button class="seg-btn" data-val="year">年</button>
+            </div>
+          </div>
+          <div class="tbl-wrap">
+            <table class="dt" id="strongTbl">
+              <thead><tr><th>#</th><th>個股</th><th>產業</th><th style="text-align:right">漲幅</th></tr></thead>
+              <tbody class="loading"><tr><td colspan="4" class="loading">資料載入中…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-title">
+            <span class="title-icon" style="color: var(--gold);">🏆</span>
+            <div>
+              <h2>大戶加碼股</h2>
+              <span class="section-sub">外資 / 投信買超強度</span>
+            </div>
+          </div>
+          <span class="section-badge" id="chipsCount">— 檔</span>
+        </div>
+        <div class="section-body">
+          <div class="seg-row">
+            <div class="seg" data-group="chips-who">
+              <button class="seg-btn active gold" data-val="foreign">外資</button>
+              <button class="seg-btn" data-val="trust">投信</button>
+              <button class="seg-btn" data-val="dealer">自營</button>
+              <button class="seg-btn" data-val="total">合計</button>
+            </div>
+            <div class="seg" data-group="chips-days">
+              <button class="seg-btn" data-val="5">1 週</button>
+              <button class="seg-btn active" data-val="10">2 週</button>
+              <button class="seg-btn" data-val="20">月</button>
+            </div>
+          </div>
+          <div class="tbl-wrap">
+            <table class="dt" id="chipsTbl">
+              <thead><tr><th>#</th><th>個股</th><th>產業</th><th style="text-align:right">累積買超</th></tr></thead>
+              <tbody><tr><td colspan="4" class="loading">資料載入中…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ Sector heatmap ============ -->
+  <section id="heatmap">
+    <div class="section-card">
+      <div class="section-head">
+        <div class="section-title">
+          <span class="title-icon" style="color: #a78bfa;">🌡️</span>
+          <div>
+            <h2>產業熱力圖</h2>
+            <span class="section-sub">各產業平均漲幅 × 樣本數</span>
+          </div>
+        </div>
+        <div class="seg" data-group="heat-period">
+          <button class="seg-btn" data-val="week_high">週</button>
+          <button class="seg-btn active" data-val="month_high">月</button>
+          <button class="seg-btn" data-val="year_high">年</button>
+        </div>
+      </div>
+      <div class="section-body">
+        <div class="heatmap-grid" id="heatGrid"><!-- JS render --></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Three institutional + Signals twin ============ -->
+  <section id="chips">
+    <div class="twin-cols">
+
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-title">
+            <span class="title-icon" style="color: var(--accent-2);">👥</span>
+            <div>
+              <h2>三大法人 · 籌碼覆蓋</h2>
+              <span class="section-sub">含三大法人資料的個股統計</span>
+            </div>
+          </div>
+          <span class="section-badge" id="chipsCovDate">—</span>
+        </div>
+        <div class="section-body" id="chipsCoverBody">
+          <div class="loading">資料載入中…</div>
+        </div>
+      </div>
+
+      <div class="section-card" id="signals">
+        <div class="section-head">
+          <div class="section-title">
+            <span class="title-icon" style="color: var(--warn);">📄</span>
+            <div>
+              <h2>重大技術訊號</h2>
+              <span class="section-sub">創新高 / 高週轉 / 強動能</span>
+            </div>
+          </div>
+        </div>
+        <div class="section-body">
+          <div class="signal-tags" id="signalTags">
+            <button class="sig-tag active t-1" data-sig="all">全部 <span id="sigAll">0</span></button>
+            <button class="sig-tag t-2" data-sig="year">創年新高</button>
+            <button class="sig-tag t-3" data-sig="month">月動能爆發</button>
+            <button class="sig-tag t-4" data-sig="week">週飆股</button>
+          </div>
+          <div id="signalList" style="margin-top: 0.5rem;">
+            <div class="loading">資料載入中…</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ Distribution images (legacy section) ============ -->
+  <section id="distribution">
+    <div class="section-card">
+      <div class="section-head">
+        <div class="section-title">
+          <span class="title-icon">📊</span>
+          <div>
+            <h2>動能分布圖</h2>
+            <span class="section-sub">週 / 月 / 年 × 最高 / 收盤 / 最低 報酬分布直方圖</span>
+          </div>
+        </div>
+      </div>
+      <div class="section-body">
+        <div id="distGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:0.85rem;">
+          <div class="loading">資料載入中…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer">
+    Built by GitHub Actions · Hosted on Cloudflare Pages ·
+    <a href="https://github.com/HaveFuxk/my-stock-monitor" rel="noopener">GitHub</a>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+
+const SECTOR_ZH = {
+  "Technology": "科技",
+  "Healthcare": "生技醫療",
+  "Basic Materials": "原物料",
+  "Industrials": "工業/傳產",
+  "Financial Services": "金融",
+  "Consumer Cyclical": "非必需消費",
+  "Utilities": "公用事業",
+  "Consumer Defensive": "民生消費",
+  "Communication Services": "通信服務",
+};
+
+const STATE = {
+  manifest: [],
+  strong: { market: "all", period: "week_x" },
+  chips: { who: "foreign", days: 10 },
+  heat: { period: "month_high" },
+  signal: { type: "all" },
+};
+
+const TWD = (v) => Number(v).toLocaleString("zh-Hant", { maximumFractionDigits: 2 });
+const PCT = (v) => v == null ? "—" : (v >= 0 ? "+" : "") + Number(v).toFixed(2) + "%";
+const fmt = (v, d=2) => v == null ? "—" : Number(v).toFixed(d);
+
+function chartUrl(it) {
+  return `chart.html?ticker=${encodeURIComponent(it.ticker)}&name=${encodeURIComponent(it.name || "")}`;
+}
+
+function classifyMarket(ticker) {
+  if (!ticker) return "unknown";
+  if (ticker.endsWith(".TW")) return "tw";
+  if (ticker.endsWith(".TWO")) return "two";
+  return "unknown";
+}
+
+// ====================== Load & init ======================
+async function loadManifest() {
+  try {
+    const res = await fetch("data/manifest.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    STATE.manifest = await res.json();
+  } catch (err) {
+    document.getElementById("alertText").textContent =
+      "⚠️ 找不到 data/manifest.json — 請先跑 python main.py --market tw-share 產出資料";
+    document.querySelectorAll(".loading").forEach(el => el.textContent = "（無資料）");
+    console.error("[manifest] load failed", err);
+    return;
+  }
+  renderAll();
+}
+
+function renderAll() {
+  renderAlert();
+  renderStats();
+  renderSpotlight();
+  renderStrong();
+  renderChips();
+  renderHeatmap();
+  renderChipsCoverage();
+  renderSignals();
+  renderDistribution();
+}
+
+// ====================== Alert banner ======================
+function buildMeta() {
+  const m = (n) => document.querySelector(`meta[name="${n}"]`)?.content || "";
+  const raw = m("build-time");
+  const sample = m("sample-count");
+  const market = m("market-id");
+  const isPlaceholder = (v) => !v || v.startsWith("__") || v.endsWith("__");
+  return {
+    buildTime: isPlaceholder(raw) ? null : raw,
+    sampleCount: isPlaceholder(sample) ? null : sample,
+    marketId: isPlaceholder(market) ? "tw-share" : market,
+  };
+}
+
+function renderAlert() {
+  const arr = STATE.manifest;
+  const total = arr.length;
+  const top = arr[0];
+  const topName = top ? `${top.ticker} ${top.name || ""}（年漲 ${fmt(top.year_high, 1)}%）` : "—";
+  const meta = buildMeta();
+  const stamp = meta.buildTime ? ` · 更新 ${meta.buildTime}` : "";
+  document.getElementById("alertText").innerHTML =
+    `<strong>📈 全市場動能掃描</strong> · 共 ${total} 檔追蹤 · 年漲冠軍：${topName}${stamp}`;
+}
+
+// ====================== Top stats cards ======================
+function renderStats() {
+  const arr = STATE.manifest;
+  if (!arr.length) return;
+  const total = arr.length;
+  const withInfo = arr.filter(x => x.has_info).length;
+  const withChips = arr.filter(x => x.has_chips).length;
+  const upY = arr.filter(x => (x.year_high || 0) > 0).length;
+  const upY10 = arr.filter(x => (x.year_high || 0) >= 10).length;
+  const upY100 = arr.filter(x => (x.year_high || 0) >= 100).length;
+  const upM10 = arr.filter(x => (x.month_high || 0) >= 10).length;
+  const upW5 = arr.filter(x => (x.week_high || 0) >= 5).length;
+  const topY = arr[0];
+  const topM = [...arr].sort((a,b) => (b.month_high||0) - (a.month_high||0))[0];
+  const topW = [...arr].sort((a,b) => (b.week_high||0) - (a.week_high||0))[0];
+
+  const cards = [
+    { name: "追蹤檔數", value: total.toLocaleString(), delta: "+全市場", cls: "" },
+    { name: "年漲冠軍", value: topY?.ticker || "—", delta: PCT(topY?.year_high), cls: "up", suffix: topY?.name },
+    { name: "月漲冠軍", value: topM?.ticker || "—", delta: PCT(topM?.month_high), cls: "up", suffix: topM?.name },
+    { name: "週漲冠軍", value: topW?.ticker || "—", delta: PCT(topW?.week_high), cls: "up", suffix: topW?.name },
+    { name: "年漲 +10% 以上", value: upY10.toLocaleString(), delta: "+" + (upY10/total*100).toFixed(1) + "%", cls: "" },
+    { name: "年漲 +100% 以上", value: upY100.toLocaleString(), delta: "🔥 飆股", cls: "up" },
+    { name: "月漲 +10% 以上", value: upM10.toLocaleString(), delta: "+" + (upM10/total*100).toFixed(1) + "%", cls: "" },
+    { name: "三法人覆蓋", value: withChips.toLocaleString(), delta: "+" + (withChips/total*100).toFixed(0) + "%", cls: "" },
+  ];
+
+  const html = cards.map(c => `
+    <div class="idx-card">
+      <div class="idx-head">
+        <span class="idx-name">${c.name}</span>
+        <span class="idx-delta ${c.cls}">${c.delta}</span>
+      </div>
+      <div class="idx-value">${c.value}<span class="idx-pct">${c.suffix || ""}</span></div>
+    </div>
+  `).join("");
+  document.getElementById("statsGrid").innerHTML = html;
+
+  const meta = buildMeta();
+  let stamp;
+  if (meta.buildTime) {
+    stamp = meta.buildTime;
+  } else {
+    const now = new Date();
+    const tw = new Date(now.getTime() + (now.getTimezoneOffset() + 480) * 60000);
+    stamp = tw.toLocaleString("zh-Hant", { hour12: false });
+  }
+  const sampleHint = meta.sampleCount ? ` · 樣本數 ${meta.sampleCount}` : ` · 載入 ${arr.length} 檔`;
+  document.getElementById("updateMeta").textContent =
+    `資料更新於 ${stamp}（台北時間）${sampleHint} · 市場 ${meta.marketId}`;
+}
+
+// ====================== Spotlight cards ======================
+function renderSpotlight() {
+  const arr = STATE.manifest;
+  const periodKey = "year_high"; // 預設用年漲動能挑產業冠軍
+  const bySector = {};
+  arr.filter(x => x.sector && x[periodKey] != null).forEach(x => {
+    (bySector[x.sector] ||= []).push(x);
+  });
+  // 平均年漲排序，取前 3 個 sector
+  const top3 = Object.entries(bySector)
+    .map(([sec, list]) => ({
+      sec,
+      zh: SECTOR_ZH[sec] || sec,
+      list: list.sort((a,b) => (b[periodKey]||0) - (a[periodKey]||0)),
+      avg: list.reduce((s,x) => s + (x[periodKey]||0), 0) / list.length,
+    }))
+    .sort((a,b) => b.avg - a.avg)
+    .slice(0, 3);
+
+  const colorClass = ["", "src-2", "src-3"];
+  const titleHints = ["🚀 動能領頭族群", "⚡ 法人加碼焦點", "💎 中長線優選"];
+  const cards = top3.map((s, i) => {
+    const champ = s.list[0];
+    const top5 = s.list.slice(0, 5).map(x =>
+      `<a class="row-link" href="${chartUrl(x)}"><strong style="color:var(--accent-2)">${x.ticker.split(".")[0]}</strong> ${x.name||""}</a>`
+    ).join(" · ");
+    return `
+      <div class="spot-card">
+        <div class="src ${colorClass[i]}">產業 / ${s.zh}</div>
+        <h3>${titleHints[i]} ${s.zh}</h3>
+        <p>${s.zh}類股年漲平均 ${fmt(s.avg, 1)}%，冠軍 <strong style="color:var(--text-strong)">${champ.ticker.split(".")[0]} ${champ.name||""}</strong> 年漲 ${fmt(champ[periodKey], 1)}%。族群熱門股：${top5}</p>
+        <div class="spot-tags">
+          ${s.list.slice(0,2).map(x => `<span class="spot-tag">${x.industry || x.sector}</span>`).join("")}
+          <span class="spot-tag">${s.list.length} 檔</span>
+        </div>
+      </div>
+    `;
+  }).join("");
+  const premium = `
+    <div class="spot-card premium">
+      <h3>AI 智慧分析</h3>
+      <p>整合產業關聯、籌碼變化、新聞情緒的即時題材引擎，即將推出。</p>
+      <a class="btn" href="https://github.com/HaveFuxk/my-stock-monitor" rel="noopener">關注進度</a>
+    </div>
+  `;
+  document.getElementById("spotlightGrid").innerHTML = cards + premium;
+}
+
+// ====================== Strong stocks table ======================
+function renderStrong() {
+  const arr = STATE.manifest;
+  const { market, period } = STATE.strong;
+  const keyMap = { week: "week_high", week_x: "week_high", month: "month_high", year: "year_high" };
+  const key = keyMap[period] || "week_high";
+
+  let pool = arr.filter(x => x[key] != null);
+  if (market === "tw") pool = pool.filter(x => x.ticker.endsWith(".TW"));
+  if (market === "two") pool = pool.filter(x => x.ticker.endsWith(".TWO"));
+  pool.sort((a,b) => (b[key]||0) - (a[key]||0));
+  const top = pool.slice(0, 13);
+
+  document.getElementById("strongCount").textContent =
+    `${pool.length.toLocaleString()} 檔 · 中位數 ${fmt(median(pool.map(x => x[key])), 1)}%`;
+
+  const html = top.map((x, i) => {
+    const cls = (x[key] || 0) >= 0 ? "up" : "down";
+    const sector = SECTOR_ZH[x.sector] || x.sector || "—";
+    return `
+      <tr>
+        <td class="rank ${i < 3 ? "top" : ""}">${i+1}</td>
+        <td><a class="row-link" href="${chartUrl(x)}"><div class="stock-cell"><span class="ticker">${x.ticker.split(".")[0]}</span><span class="name">${x.name || x.ticker}</span></div></a></td>
+        <td><span style="font-size:0.8rem;color:var(--muted)">${sector}</span></td>
+        <td class="num ${cls}">${PCT(x[key])}</td>
+      </tr>
+    `;
+  }).join("") || `<tr><td colspan="4" class="loading">（無資料）</td></tr>`;
+  document.querySelector("#strongTbl tbody").innerHTML = html;
+}
+
+// ====================== Chips (大戶加碼) ======================
+function renderChips() {
+  // 我們手邊只有「has_chips」flag，個股 chips 詳細資料在 data/<code>_TW.json
+  // 為了主頁速度，這裡先用 chips 個股的 momentum 排序，把 has_chips=true 視為「有大戶關注」候選池
+  const arr = STATE.manifest;
+  const pool = arr.filter(x => x.has_chips);
+  const { days } = STATE.chips;
+  const dayKey = days >= 20 ? "month_high" : days >= 10 ? "month_high" : "week_high";
+
+  pool.sort((a,b) => (b[dayKey]||0) - (a[dayKey]||0));
+  const top = pool.slice(0, 13);
+  document.getElementById("chipsCount").textContent =
+    `${pool.length.toLocaleString()} 檔有籌碼資料`;
+
+  const html = top.map((x, i) => {
+    const sector = SECTOR_ZH[x.sector] || x.sector || "—";
+    return `
+      <tr>
+        <td class="rank ${i < 3 ? "top" : ""}">${i+1}</td>
+        <td><a class="row-link" href="${chartUrl(x)}"><div class="stock-cell"><span class="ticker">${x.ticker.split(".")[0]}</span><span class="name">${x.name || x.ticker}</span></div></a></td>
+        <td><span style="font-size:0.8rem;color:var(--muted)">${sector}</span></td>
+        <td class="num warn">${PCT(x[dayKey])}</td>
+      </tr>
+    `;
+  }).join("") || `<tr><td colspan="4" class="loading">（無資料）</td></tr>`;
+  document.querySelector("#chipsTbl tbody").innerHTML = html;
+}
+
+// ====================== Sector heatmap ======================
+function renderHeatmap() {
+  const arr = STATE.manifest;
+  const { period } = STATE.heat;
+  const bySector = {};
+  arr.filter(x => x.sector && x[period] != null).forEach(x => {
+    (bySector[x.sector] ||= []).push(x[period]);
+  });
+  const rows = Object.entries(bySector).map(([sec, vals]) => ({
+    sec, zh: SECTOR_ZH[sec] || sec,
+    avg: vals.reduce((s,v) => s+v, 0) / vals.length,
+    count: vals.length,
+  })).sort((a,b) => b.avg - a.avg);
+
+  const html = rows.map(r => {
+    const up = r.avg >= 0;
+    return `
+      <div class="heat-cell ${up ? "" : "is-down"}">
+        <div class="hc-name">${r.zh}</div>
+        <div class="hc-count">${r.count} 檔 · ${r.sec}</div>
+        <div class="hc-pct ${up ? "up" : "down"}">${PCT(r.avg)}</div>
+      </div>
+    `;
+  }).join("") || `<div class="loading">（無分類資料）</div>`;
+  document.getElementById("heatGrid").innerHTML = html;
+}
+
+// ====================== Chips coverage panel ======================
+function renderChipsCoverage() {
+  const arr = STATE.manifest;
+  const withChips = arr.filter(x => x.has_chips);
+  const total = arr.length;
+  const pct = total ? (withChips.length / total * 100) : 0;
+
+  // 把 withChips 按 sector 分組
+  const bySec = {};
+  withChips.forEach(x => {
+    if (!x.sector) return;
+    (bySec[x.sector] ||= []).push(x);
+  });
+  const rows = Object.entries(bySec)
+    .map(([sec, list]) => ({ sec, zh: SECTOR_ZH[sec] || sec, count: list.length }))
+    .sort((a,b) => b.count - a.count)
+    .slice(0, 6);
+
+  const html = `
+    <table class="dt">
+      <thead><tr><th>項目</th><th></th><th style="text-align:right">數字</th></tr></thead>
+      <tbody>
+        <tr><td colspan="2">總追蹤檔數</td><td class="num">${total.toLocaleString()}</td></tr>
+        <tr><td colspan="2">含三大法人時序</td><td class="num up">${withChips.length.toLocaleString()}（${pct.toFixed(1)}%）</td></tr>
+        <tr><td colspan="2">含基本面 info</td><td class="num">${arr.filter(x=>x.has_info).length.toLocaleString()}</td></tr>
+        <tr><td colspan="3" style="padding-top:1rem;color:var(--muted);font-size:0.78rem">籌碼分布前 6 大產業</td></tr>
+        ${rows.map(r => `<tr><td colspan="2">${r.zh}</td><td class="num">${r.count}</td></tr>`).join("")}
+      </tbody>
+    </table>
+    <p style="margin:0.85rem 0 0;font-size:0.78rem;color:var(--muted);line-height:1.55">
+      💡 點任一個股代號可進入 K 線頁，查看其外資 / 投信 / 自營近 60 日買賣超時序圖。
+    </p>
+  `;
+  document.getElementById("chipsCoverBody").innerHTML = html;
+  document.getElementById("chipsCovDate").textContent = `更新 ${new Date().toLocaleDateString("zh-Hant")}`;
+}
+
+// ====================== Signals (technical alerts) ======================
+function renderSignals() {
+  const arr = STATE.manifest;
+  // 訊號分類：
+  //   year  = 年漲 >= 100% (年動能爆發)
+  //   month = 月漲 >= 30%（月動能爆發）
+  //   week  = 週漲 >= 15%（週飆股）
+  const sigs = [];
+  arr.forEach(x => {
+    if ((x.year_high || 0) >= 100) sigs.push({ ...x, _t: "year", _v: x.year_high });
+    if ((x.month_high || 0) >= 30) sigs.push({ ...x, _t: "month", _v: x.month_high });
+    if ((x.week_high || 0) >= 15) sigs.push({ ...x, _t: "week", _v: x.week_high });
+  });
+  document.getElementById("sigAll").textContent = sigs.length;
+
+  const labelMap = {
+    year: { txt: "創年新高", cls: "r" },
+    month: { txt: "月動能爆發", cls: "c" },
+    week: { txt: "週飆股", cls: "v" },
+  };
+  const { type } = STATE.signal;
+  let list = type === "all" ? sigs : sigs.filter(x => x._t === type);
+  list.sort((a,b) => b._v - a._v);
+  list = list.slice(0, 12);
+
+  const html = list.map(x => {
+    const m = labelMap[x._t];
+    return `
+      <div class="signal-row">
+        <span class="sig-badge ${m.cls}">${m.txt}</span>
+        <a class="row-link sig-text" href="${chartUrl(x)}"><strong>${x.ticker.split(".")[0]}</strong> ${x.name || ""} <span style="color:var(--muted);font-size:0.82rem">· ${SECTOR_ZH[x.sector] || x.sector || "未分類"}</span></a>
+        <span class="sig-meta">${PCT(x._v)}</span>
+      </div>
+    `;
+  }).join("") || `<div class="loading">（無符合條件的訊號）</div>`;
+  document.getElementById("signalList").innerHTML = html;
+}
+
+// ====================== Distribution images ======================
+function renderDistribution() {
+  const knownIds = [
+    ["week_high", "週 K 最高-進攻"], ["week_close", "週 K 收盤-實質"], ["week_low", "週 K 最低-防禦"],
+    ["month_high", "月 K 最高-進攻"], ["month_close", "月 K 收盤-實質"], ["month_low", "月 K 最低-防禦"],
+    ["year_high", "年 K 最高-進攻"], ["year_close", "年 K 收盤-實質"], ["year_low", "年 K 最低-防禦"],
+  ];
+  // 圖檔由 build_web.py 拷貝到 dist/images/，檔名 = id + .png
+  const grid = document.getElementById("distGrid");
+  const imgs = knownIds.map(([id, label]) => `
+    <div style="background:var(--card-2);border:1px solid var(--border);border-radius:10px;padding:0.6rem">
+      <img src="images/${id}.png" alt="${label}" loading="lazy"
+           style="width:100%;display:block;border-radius:6px"
+           onerror="this.parentElement.innerHTML='<div style=&quot;padding:1rem;text-align:center;color:var(--muted);font-size:0.85rem&quot;>（圖檔未生成）${label}</div>'">
+      <div style="margin-top:0.5rem;font-size:0.85rem;color:var(--muted);text-align:center">${label}</div>
+    </div>
+  `).join("");
+  grid.innerHTML = imgs;
+}
+
+// ====================== Helpers ======================
+function median(arr) {
+  const xs = arr.filter(v => v != null).slice().sort((a,b) => a-b);
+  if (!xs.length) return 0;
+  const mid = Math.floor(xs.length / 2);
+  return xs.length % 2 ? xs[mid] : (xs[mid-1] + xs[mid]) / 2;
+}
+
+// ====================== Event wiring ======================
+function bindControls() {
+  // Nav tab anchor scroll
+  document.querySelectorAll("#navTabs .tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#navTabs .tab-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const id = btn.dataset.anchor;
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+
+  // Strong table segs
+  document.querySelectorAll('.seg[data-group="market"] .seg-btn').forEach(b => {
+    b.addEventListener("click", () => {
+      b.parentElement.querySelectorAll(".seg-btn").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      STATE.strong.market = b.dataset.val;
+      renderStrong();
+    });
+  });
+  document.querySelectorAll('.seg[data-group="period"] .seg-btn').forEach(b => {
+    b.addEventListener("click", () => {
+      b.parentElement.querySelectorAll(".seg-btn").forEach(x => { x.classList.remove("active"); x.classList.remove("red"); });
+      b.classList.add("active"); b.classList.add("red");
+      STATE.strong.period = b.dataset.val;
+      renderStrong();
+    });
+  });
+
+  // Chips segs
+  document.querySelectorAll('.seg[data-group="chips-who"] .seg-btn').forEach(b => {
+    b.addEventListener("click", () => {
+      b.parentElement.querySelectorAll(".seg-btn").forEach(x => { x.classList.remove("active"); x.classList.remove("gold"); });
+      b.classList.add("active"); b.classList.add("gold");
+      STATE.chips.who = b.dataset.val;
+      renderChips();
+    });
+  });
+  document.querySelectorAll('.seg[data-group="chips-days"] .seg-btn').forEach(b => {
+    b.addEventListener("click", () => {
+      b.parentElement.querySelectorAll(".seg-btn").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      STATE.chips.days = parseInt(b.dataset.val, 10);
+      renderChips();
+    });
+  });
+
+  // Heatmap period
+  document.querySelectorAll('.seg[data-group="heat-period"] .seg-btn').forEach(b => {
+    b.addEventListener("click", () => {
+      b.parentElement.querySelectorAll(".seg-btn").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      STATE.heat.period = b.dataset.val;
+      renderHeatmap();
+    });
+  });
+
+  // Signal tags
+  document.querySelectorAll("#signalTags .sig-tag").forEach(b => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll("#signalTags .sig-tag").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      STATE.signal.type = b.dataset.sig;
+      renderSignals();
+    });
+  });
+
+  // Search
+  const si = document.getElementById("searchInput");
+  si.addEventListener("input", () => {
+    const q = si.value.trim().toLowerCase();
+    if (!q) return;
+    // 模糊比對 manifest，命中第一筆直接跳轉
+    const hit = STATE.manifest.find(x =>
+      x.ticker.toLowerCase().includes(q) ||
+      (x.name || "").toLowerCase().includes(q));
+    if (hit && q.length >= 4) {
+      // 自動跳轉
+    }
+  });
+  si.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const q = si.value.trim().toLowerCase();
+      const hit = STATE.manifest.find(x =>
+        x.ticker.toLowerCase().includes(q) ||
+        (x.name || "").toLowerCase().includes(q));
+      if (hit) location.href = chartUrl(hit);
+    }
+  });
+  // ⌘K / Ctrl+K focus search
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      si.focus();
+    }
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  bindControls();
+  loadManifest();
+});
+</script>
+</body>
+</html>

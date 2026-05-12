@@ -30,6 +30,7 @@ if sys.platform == "win32":
 DIST_DIR = Path("dist")
 OUTPUT_DIR = Path("output")
 META_FILE = OUTPUT_DIR / "web_meta.json"
+TEMPLATE_FILE = Path("web_template.html")  # git-tracked HTML 模板（含 placeholder）
 
 LABEL_MAP = {
     "week_high": "週 K 最高-進攻",
@@ -60,135 +61,28 @@ def _img_sort_key(item):
     return (PERIOD_ORDER.get(period, 99), TYPE_ORDER.get(typ, 99), img_id)
 
 
-HTML_TEMPLATE = """<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>my-stock-monitor — 台股動能監控</title>
-<meta name="description" content="台股全市場動能分布監控 - 週/月/年 × 最高/收盤/最低 報酬分布">
-<style>
-:root {{
-  --bg: #fafafa;
-  --card: #ffffff;
-  --text: #1f2328;
-  --muted: #656d76;
-  --border: #d0d7de;
-  --accent: #0969da;
-  --danger: #cf222e;
-}}
-@media (prefers-color-scheme: dark) {{
-  :root {{
-    --bg: #0d1117;
-    --card: #161b22;
-    --text: #e6edf3;
-    --muted: #8b949e;
-    --border: #30363d;
-    --accent: #58a6ff;
-    --danger: #ff7b72;
-  }}
-}}
-* {{ box-sizing: border-box; }}
-html, body {{ margin: 0; padding: 0; }}
-body {{
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  line-height: 1.5;
-  padding: 1rem;
-}}
-.container {{ max-width: 1200px; margin: 0 auto; }}
-h1 {{ margin: 0 0 0.25rem 0; font-size: 1.75rem; }}
-h2 {{ margin: 1.5rem 0 0.75rem 0; font-size: 1.25rem; }}
-.meta {{
-  color: var(--muted);
-  font-size: 0.9rem;
-  margin-bottom: 1.5rem;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 1rem;
-}}
-.meta a {{ color: var(--accent); text-decoration: none; }}
-.meta a:hover {{ text-decoration: underline; }}
-.grid {{
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
-}}
-.card {{
-  background: var(--card);
-  padding: 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-}}
-.card img {{
-  width: 100%;
-  height: auto;
-  display: block;
-  border-radius: 4px;
-}}
-.card .label {{
-  font-size: 0.85rem;
-  color: var(--muted);
-  margin-top: 0.5rem;
-  text-align: center;
-}}
-.report {{
-  background: var(--card);
-  padding: 1rem;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  margin-bottom: 1rem;
-  overflow-x: auto;
-}}
-.report h2 {{ margin-top: 0; }}
-.report pre {{
-  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
-  font-size: 0.82rem;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-word;
-  margin: 0;
-}}
-.report a {{ color: var(--accent); text-decoration: none; }}
-.report a:hover {{ text-decoration: underline; }}
-.footer {{
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.85rem;
-  margin-top: 2rem;
-  padding: 1rem 0;
-  border-top: 1px solid var(--border);
-}}
-</style>
-</head>
-<body>
-<div class="container">
-  <h1>🇹🇼 my-stock-monitor</h1>
-  <p class="meta">
-    最後更新：<strong>{updated_at}</strong>（台北時間）
-    · 樣本數：<strong>{sample_count}</strong>
-    · 市場：<strong>{market_id}</strong>
-    · <a href="https://github.com/HaveFuxk/my-stock-monitor" rel="noopener">GitHub</a>
-  </p>
-  <p class="meta" style="margin-top: -0.75rem;">
-    💡 下方飆股清單中，點任一代號即可查看該檔個股 K 線（站內 TradingView 互動圖）。
-  </p>
+# --- HTML 模板已遷移到 web_template.html（git tracked）---
+# 改 UI 直接編輯 web_template.html；build_web.py 會在 build 時用 .replace()
+# 注入 __UPDATED_AT__ / __SAMPLE_COUNT__ / __MARKET_ID__ 三個 placeholder。
 
-  <h2>動能分布圖（週 / 月 / 年 × 最高 / 收盤 / 最低）</h2>
-  <div class="grid">
-    {image_cards}
-  </div>
-
-  {text_sections}
-
-  <div class="footer">
-    Built by GitHub Actions · Hosted on Cloudflare Pages
-  </div>
-</div>
-</body>
-</html>
+# Fallback 模板：web_template.html 不存在時用此最小骨架，避免 build 整個炸掉。
+FALLBACK_TEMPLATE = """<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8">
+<title>my-stock-monitor</title></head>
+<body style="font-family:sans-serif;padding:2rem;background:#0a0e14;color:#d4d8e0">
+<h1>⚠️ web_template.html 不存在</h1>
+<p>build_web.py 找不到模板檔。請從 git 還原 web_template.html，或先跑一次本地測試。</p>
+<p>更新時間：__UPDATED_AT__ · 樣本：__SAMPLE_COUNT__ · 市場：__MARKET_ID__</p>
+</body></html>
 """
+
+
+def _load_web_template() -> str:
+    """讀 web_template.html；不存在則回傳 FALLBACK_TEMPLATE 並印警告。"""
+    if TEMPLATE_FILE.exists():
+        return TEMPLATE_FILE.read_text(encoding="utf-8")
+    print(f"⚠️ [build_web] 找不到 {TEMPLATE_FILE}，使用 fallback 骨架（UI 會看起來壞掉）")
+    return FALLBACK_TEMPLATE
 
 
 def now_taipei_str() -> str:
@@ -748,16 +642,22 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     }
     META_FILE.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # 4) 渲染 HTML
-    html = HTML_TEMPLATE.format(
-        updated_at=meta["updated_at"],
-        sample_count=sample_count,
-        market_id=market_id,
-        image_cards=_render_image_cards(image_items) or "<p>（無圖檔）</p>",
-        text_sections=_render_text_sections(text_reports),
+    # 4) 渲染 HTML — 從 web_template.html 讀模板，用 .replace 注入 placeholder
+    #    （改用 .replace 避免 .format 跟 CSS / JS 裡的 { } 衝突）
+    template = _load_web_template()
+    html = (
+        template
+        .replace("__UPDATED_AT__", str(meta["updated_at"]))
+        .replace("__SAMPLE_COUNT__", str(sample_count))
+        .replace("__MARKET_ID__", str(market_id))
     )
     out = DIST_DIR / "index.html"
     out.write_text(html, encoding="utf-8")
+
+    # 4b) 動能分布 PNG 名稱在新版前端已直接 reference 為 images/{id}.png，
+    #     `_render_image_cards` / `_render_text_sections` 仍保留以供 standalone 模式或未來舊版 fallback 使用。
+    _ = _render_image_cards(image_items)
+    _ = _render_text_sections(text_reports)
 
     # 5) 複製 chart.html 模板到 dist/（供站內 K 線頁使用）
     chart_src = Path("chart.html")
