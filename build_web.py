@@ -607,44 +607,82 @@ def _export_kline_json(report_df, market_id="tw-share", top_n=None,
     return manifest
 
 
-def _inject_peers(manifest, out_dir, top_n_per_sector=5):
+def _inject_peers(manifest, out_dir, top_n=5, min_industry_pool=2):
     """
-    對 manifest 中所有 has_info 的個股，按 sector 分組找出年漲幅 Top N，
-    把同 sector peers list 回寫到該個股 JSON 的 `peers` 欄位。
+    peers v2 — 修 v1「台積電 peers 全是上櫃妖股」痛點。
 
-    只對有 sector / has_info 的個股做（其他無資料來源做不出 peers）。
+    v1 用 yfinance.sector（粗，Technology 涵蓋 IC 通路 / 軟體 / 妖股），
+    且候選池包含 .TWO 上櫃妖股 → 2330 的 peers 全是 +6000% 以上的妖股。
+
+    v2 兩個改動：
+      1. 候選池只收 TWSE 上市 .TW，排除 .TWO 上櫃/興櫃妖股
+         （endswith('.TW') 不會吃到 .TWO，因為 .TWO 結尾是 'O' 不是 'W'）
+      2. 主分組用 industry（細項，Semiconductors / Banks—Regional / ...）
+         industry 候選池 < min_industry_pool（自己+至少 1 對手）時 fallback 到 sector
+
+    本身是 .TWO 的飆股仍能拿到 peers — 它的 industry 命中 .TW 候選池，
+    撈到「同細項行業的上市對手」，比「sector 內年漲冠軍妖股」實用得多。
     """
-    # 按 sector 分組
+    # 候選池：只收 TWSE 上市 .TW + has_info（要有 industry/sector 才能分組）
+    pool = [
+        m for m in manifest
+        if m.get("has_info")
+        and m.get("ticker", "").endswith(".TW")
+        and (m.get("industry") or m.get("sector"))
+    ]
+
+    by_industry = {}
     by_sector = {}
-    for m in manifest:
+    for m in pool:
+        ind = m.get("industry")
         sec = m.get("sector")
-        if not sec or not m.get("has_info"):
-            continue
-        by_sector.setdefault(sec, []).append(m)
+        if ind:
+            by_industry.setdefault(ind, []).append(m)
+        if sec:
+            by_sector.setdefault(sec, []).append(m)
 
-    # 每個 sector 取年漲 Top N
-    sector_top = {}
-    for sec, items in by_sector.items():
+    def take_top(items, exclude_ticker, n=top_n):
         ranked = sorted(items, key=lambda x: x.get("year_high") or -999, reverse=True)
-        sector_top[sec] = [
-            {
+        out = []
+        for x in ranked:
+            if x["ticker"] == exclude_ticker:
+                continue
+            out.append({
                 "ticker": x["ticker"],
                 "name": x["name"],
                 "safe_id": x["safe_id"],
                 "year_high": x.get("year_high"),
-            }
-            for x in ranked[:top_n_per_sector]
-        ]
+            })
+            if len(out) >= n:
+                break
+        return out
 
-    # 把每個 sector 的 peers 回寫到該個股 JSON
     updated = 0
+    ind_hits = 0
+    sec_fallbacks = 0
     for m in manifest:
-        sec = m.get("sector")
-        if not sec or sec not in sector_top:
+        if not m.get("has_info"):
             continue
-        peers = [p for p in sector_top[sec] if p["ticker"] != m["ticker"]]
+        ticker = m["ticker"]
+        ind = m.get("industry")
+        sec = m.get("sector")
+
+        peers = None
+        # 先試 industry（細項）
+        if ind and ind in by_industry and len(by_industry[ind]) >= min_industry_pool:
+            cand = take_top(by_industry[ind], ticker)
+            if cand:
+                peers = cand
+                ind_hits += 1
+        # industry 候選池太小 → fallback sector（粗）
+        if not peers and sec and sec in by_sector:
+            cand = take_top(by_sector[sec], ticker)
+            if cand:
+                peers = cand
+                sec_fallbacks += 1
         if not peers:
             continue
+
         json_path = out_dir / f"{m['safe_id']}.json"
         if not json_path.exists():
             continue
@@ -656,7 +694,11 @@ def _inject_peers(manifest, out_dir, top_n_per_sector=5):
                 updated += 1
         except Exception:
             continue
-    print(f"   - peers 回寫：{updated} 檔（依 sector 取年漲 Top {top_n_per_sector}）")
+    print(
+        f"   - peers v2 回寫：{updated} 檔"
+        f"（industry {ind_hits} / sector fallback {sec_fallbacks}），"
+        f"候選池 {len(pool)} 檔 .TW"
+    )
 
 
 def build(images, report_df=None, text_reports=None, market_id="tw-share", sample_count=None):
