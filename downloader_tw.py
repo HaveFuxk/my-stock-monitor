@@ -86,6 +86,23 @@ def get_full_stock_list():
         except Exception as e:
             log(f"❌ 備援方案亦失敗: {e}")
 
+    # --- 額外白名單：TWSE isin 列表偶爾未涵蓋的新上市/上櫃，但主動 ETF 已開始持有 ---
+    # 這些 ticker 在每日 build 仍要抓 K 線，否則 ETF buy_rank 點不到 chart。
+    # audit 2026-05-13 發現以下個股在主動 ETF 持股但 manifest 缺失：
+    extra = [
+        ("7769", ".TW", "鴻佳精密"),       # 出現在 00991A 主動復華台灣科技優選
+        ("6831", ".TW", "台微"),           # 出現在 00996A 主動國泰科技優息
+    ]
+    existing_codes = {x.split('&', 1)[0] for x in all_items}
+    n_added = 0
+    for code, suffix, name in extra:
+        key = f"{code}{suffix}"
+        if key not in existing_codes:
+            all_items.append(f"{key}&{name}")
+            n_added += 1
+    if n_added:
+        log(f"   [extra_whitelist] +{n_added} 檔（TWSE 清單未涵蓋的 ETF 持股）")
+
     final_res = list(set(all_items))
     log(f"✅ 台股清單獲取完成，共 {len(final_res)} 檔標的。")
     return final_res
