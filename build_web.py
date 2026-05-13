@@ -669,9 +669,10 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     # 6) Export K 線 JSON 給 chart.html 用
     kline_manifest = _export_kline_json(report_df, market_id=market_id)
 
-    # 7) Wave 2/3：總體籌碼 + 新聞 + 歷史快照
+    # 7) Wave 2/3/4：總體籌碼 + 新聞 + 主動 ETF 持股 + 歷史快照
     _build_macro_data()
     _build_news_data()
+    _build_etf_data()
     snap_count = _snapshot_today_manifest()
 
     print("\n" + "=" * 60)
@@ -702,6 +703,16 @@ def _build_news_data():
         downloader_news.build_news_json()
     except Exception as e:
         print(f"⚠️ [build_web] news 抓取失敗（不影響其他資料）: {e}")
+
+
+def _build_etf_data():
+    """跑 downloader_etf，寫 dist/data/etf.json + 累積 data/etf_holdings.db。
+    容錯：yfinance 抓不到不擋 build。"""
+    try:
+        import downloader_etf
+        downloader_etf.build_etf_data()
+    except Exception as e:
+        print(f"⚠️ [build_web] etf 抓取失敗（不影響其他資料）: {e}")
 
 
 def _snapshot_today_manifest() -> int:
