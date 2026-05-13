@@ -717,9 +717,10 @@ def _build_etf_data():
 
 
 def _copy_industry_maps():
-    """把 git-tracked 的 data/industry_maps.json 拷到 dist/data/industry_maps.json
-    給前端 fetch。容錯：檔案不存在則 skip。"""
-    src = Path("data") / "industry_maps.json"
+    """把 git-tracked 的 config/industry_maps.json 拷到 dist/data/industry_maps.json
+    給前端 fetch。資料源放在 config/ 而非 data/（data/ 在 .gitignore 內，是 build 產物目錄）。
+    容錯：檔案不存在則 skip。"""
+    src = Path("config") / "industry_maps.json"
     dst = DIST_DIR / "data" / "industry_maps.json"
     if not src.exists():
         print(f"⚠️ [build_web] {src} 不存在，跳過產業地圖拷貝")

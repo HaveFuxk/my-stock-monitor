@@ -1,0 +1,88 @@
+{
+  "version": "1.0",
+  "updated": "2026-05-13",
+  "description": "產業地圖 — 人類維護的產業內部結構配置檔。每個產業含上中下游 × 角色 × 公司。",
+  "tier_legend": {
+    "leader":    { "label": "產業龍頭", "color": "green",  "dot": "●" },
+    "niche":     { "label": "利基專精", "color": "blue",   "dot": "●" },
+    "challenge": { "label": "成長挑戰", "color": "orange", "dot": "●" }
+  },
+  "relevance_legend": {
+    "high":   { "label": "高關聯度", "color": "red"  },
+    "medium": { "label": "中關聯度", "color": "warn" }
+  },
+  "industries": [
+    {
+      "id": "ai-server-odm",
+      "name": "AI 伺服器｜整機組裝 (AI Server ODM)",
+      "subtitle": "差異化核心分析 - 公司角色定位與關聯網絡",
+      "layers": [
+        {
+          "title": "上游：核心模組與零組件",
+          "icon": "📦",
+          "roles": [
+            {
+              "name": "運算模組 (L10)",
+              "desc": "GPU/CPU 載板與主板整合",
+              "companies": [
+                { "ticker": "3231", "name": "緯創", "tier": "leader", "relevance": "high" }
+              ]
+            },
+            {
+              "name": "ASIC / IP 設計",
+              "desc": "雲端大廠自研晶片設計與委託代工",
+              "companies": [
+                { "ticker": "3443", "name": "創意", "tier": "leader", "relevance": "high", "research": true },
+                { "ticker": "3661", "name": "世芯-KY", "tier": "leader", "relevance": "high" }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "中游：ODM 整機櫃組裝",
+          "icon": "⚙️",
+          "roles": [
+            {
+              "name": "ODM 整機組裝 (L11)",
+              "desc": "全球領先的 AI 伺服器整機櫃整合商",
+              "companies": [
+                { "ticker": "2317", "name": "鴻海", "tier": "leader", "relevance": "high" },
+                { "ticker": "2356", "name": "英業達", "tier": "leader", "relevance": "high" },
+                { "ticker": "2382", "name": "廣達", "tier": "leader", "relevance": "high" },
+                { "ticker": "2331", "name": "精英", "tier": "niche", "relevance": "medium" }
+              ]
+            },
+            {
+              "name": "ODM Direct 模式",
+              "desc": "繞過品牌廠直接供應雲端巨頭",
+              "companies": [
+                { "ticker": "6669", "name": "緯穎", "tier": "leader", "relevance": "high" }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "下游：品牌與雲端服務",
+          "icon": "📦",
+          "roles": [
+            {
+              "name": "品牌廠 (OBM)",
+              "desc": "針對企業客戶的自有品牌 AI 伺服器",
+              "companies": [
+                { "ticker": "2357", "name": "華碩", "tier": "leader", "relevance": "high" },
+                { "ticker": "2376", "name": "技嘉", "tier": "leader", "relevance": "high" },
+                { "ticker": "2377", "name": "微星", "tier": "challenge", "relevance": "medium" }
+              ]
+            },
+            {
+              "name": "雲端服務商 (CSP)",
+              "desc": "AI 伺服器最終需求方與維運方",
+              "companies": [],
+              "placeholder": "待補充"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
