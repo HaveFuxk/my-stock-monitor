@@ -669,10 +669,11 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     # 6) Export K 線 JSON 給 chart.html 用
     kline_manifest = _export_kline_json(report_df, market_id=market_id)
 
-    # 7) Wave 2/3/4：總體籌碼 + 新聞 + 主動 ETF 持股 + 歷史快照
+    # 7) Wave 2/3/4/5：總體籌碼 + 新聞 + 主動 ETF 持股 + 產業地圖 + 歷史快照
     _build_macro_data()
     _build_news_data()
     _build_etf_data()
+    _copy_industry_maps()
     snap_count = _snapshot_today_manifest()
 
     print("\n" + "=" * 60)
@@ -713,6 +714,19 @@ def _build_etf_data():
         downloader_etf.build_etf_data()
     except Exception as e:
         print(f"⚠️ [build_web] etf 抓取失敗（不影響其他資料）: {e}")
+
+
+def _copy_industry_maps():
+    """把 git-tracked 的 data/industry_maps.json 拷到 dist/data/industry_maps.json
+    給前端 fetch。容錯：檔案不存在則 skip。"""
+    src = Path("data") / "industry_maps.json"
+    dst = DIST_DIR / "data" / "industry_maps.json"
+    if not src.exists():
+        print(f"⚠️ [build_web] {src} 不存在，跳過產業地圖拷貝")
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    print(f"✅ [industry_maps] 拷貝 {src} → {dst}")
 
 
 def _snapshot_today_manifest() -> int:
