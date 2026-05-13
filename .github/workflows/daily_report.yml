@@ -50,6 +50,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-chips-tw-
 
+      # Wave 4：主動式 ETF 持股歷史 SQLite，跨 run 累積以算 diff（新增/加碼/減碼/移出）
+      - name: Cache ETF Holdings DB
+        uses: actions/cache@v4
+        with:
+          path: data/etf_holdings.db
+          key: ${{ runner.os }}-etf-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-etf-
+
       - name: Environment Setup
         run: |
           sudo apt-get update

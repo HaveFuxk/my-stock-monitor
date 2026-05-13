@@ -747,6 +747,7 @@ table.dt td.num.warn { color: var(--gold); }
     <button class="tab-btn" data-anchor="strong">強勢股榜</button>
     <button class="tab-btn" data-anchor="heatmap">產業熱力</button>
     <button class="tab-btn" data-anchor="chips">三大法人</button>
+    <button class="tab-btn" data-anchor="active-etf">主動 ETF</button>
     <button class="tab-btn" data-anchor="signals">技術訊號</button>
     <button class="tab-btn" data-anchor="distribution">動能分布</button>
   </nav>
@@ -926,6 +927,53 @@ table.dt td.num.warn { color: var(--gold); }
     </div>
   </section>
 
+  <!-- ============ Active ETF tracking + cross-ETF buy/sell stats ============ -->
+  <section id="active-etf">
+    <div class="twin-cols">
+
+      <!-- 左：主動式 ETF 追蹤 -->
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-title">
+            <span class="title-icon" style="color: var(--accent-2);">⚡</span>
+            <div>
+              <h2>主動式 ETF 追蹤</h2>
+              <span class="section-sub">每日持股變動（新增 / 加碼 / 減碼 / 移出）</span>
+            </div>
+          </div>
+          <span class="section-badge" id="etfDateBadge">每日持股變動</span>
+        </div>
+        <div class="section-body" id="etfTrackBody">
+          <div class="loading">資料載入中…</div>
+        </div>
+      </div>
+
+      <!-- 右：主動買賣統計（跨 ETF 聚合） -->
+      <div class="section-card">
+        <div class="section-head">
+          <div class="section-title">
+            <span class="title-icon" style="color: #a78bfa;">📊</span>
+            <div>
+              <h2>主動買賣統計</h2>
+              <span class="section-sub">跨 ETF 聚合 · 哪些個股被最多主動 ETF 持有</span>
+            </div>
+          </div>
+          <span class="section-badge" id="etfRankCount">跨 ETF 聚合</span>
+        </div>
+        <div class="section-body">
+          <div class="seg" data-group="etf-rank-tab" style="margin-bottom:0.6rem">
+            <button class="seg-btn active red" data-val="buy">買進區 <span id="etfBuyCount">0</span></button>
+            <button class="seg-btn" data-val="sell">賣出區 <span id="etfSellCount">0</span></button>
+          </div>
+          <div id="etfRankBody">
+            <div class="loading">資料載入中…</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
   <!-- ============ Technical signals (alerts) ============ -->
   <section id="signals">
     <div class="section-card">
@@ -999,6 +1047,8 @@ const STATE = {
   manifestLatest: [],       // 今日 manifest 副本，切歷史快照時 fallback 回來
   news: { items: [] },
   macro: null,
+  etf: null,                // { etfs:[...], aggregated:{buy_rank:[...], sell_rank:[...]} }
+  etfRankTab: "buy",        // 主動買賣統計 tab：buy / sell
   snapshots: null,          // { dates: ["2026-05-12", ...] }
   activeSnapshot: null,
   strong: { market: "all", period: "week_x" },
@@ -1035,11 +1085,12 @@ async function fetchJson(url, fallback = null) {
 }
 
 async function loadAll() {
-  // 4 個 endpoint 並行 fetch，個別失敗不擋住其他 section render
-  const [manifest, news, macro, snapshots] = await Promise.all([
+  // 5 個 endpoint 並行 fetch，個別失敗不擋住其他 section render
+  const [manifest, news, macro, etf, snapshots] = await Promise.all([
     fetchJson("data/manifest.json", null),
     fetchJson("data/news.json", { items: [] }),
     fetchJson("data/macro.json", null),
+    fetchJson("data/etf.json", null),
     fetchJson("data/snapshots/index.json", null),
   ]);
 
@@ -1053,6 +1104,7 @@ async function loadAll() {
   }
   STATE.news = news || { items: [] };
   STATE.macro = macro;
+  STATE.etf = etf;
   STATE.snapshots = snapshots;
   STATE.activeSnapshot = snapshots?.dates?.[0] || null;
 
@@ -1069,6 +1121,8 @@ function renderAll() {
   renderHeatmap();
   renderInstitutional();
   renderMargin();
+  renderEtfTrack();
+  renderEtfRank();
   renderSignals();
   renderDistribution();
 }
@@ -1579,6 +1633,158 @@ function renderMargin() {
   `;
 }
 
+// ====================== Active ETF tracking ======================
+// 對映圖二左區塊：列每檔主動式 ETF 的「新增/加碼/減碼/移出」數字。
+function renderEtfTrack() {
+  const body = document.getElementById("etfTrackBody");
+  const dateBadge = document.getElementById("etfDateBadge");
+  if (!body) return;
+  const etf = STATE.etf;
+  if (!etf || !etf.etfs || !etf.etfs.length) {
+    body.innerHTML = `<div class="loading" style="color:var(--muted)">（etf.json 無資料 — 跑 python downloader_etf.py 後重新整理）</div>`;
+    return;
+  }
+  if (dateBadge) dateBadge.textContent = etf.date || "—";
+
+  const rows = etf.etfs.map(e => {
+    const d = e.diff || {};
+    const added    = d.added?.length    || 0;
+    const inc      = d.increased?.length || 0;
+    const dec      = d.decreased?.length || 0;
+    const removed  = d.removed?.length   || 0;
+    const total    = e.holdings?.length || 0;
+    const prevHint = e.prev_date
+      ? `<span style="color:var(--muted);font-size:0.7rem">vs ${e.prev_date}</span>`
+      : `<span style="color:var(--muted);font-size:0.7rem">首日</span>`;
+    // 顯示：— 表示無變動或無歷史對照
+    const cellNum = (n, cls) => n > 0
+      ? `<td class="num ${cls}" style="white-space:nowrap">${n > 0 && cls === "up" ? "↗" : (cls === "down" ? "↘" : "")}${n}</td>`
+      : `<td class="num" style="color:var(--muted-2)">—</td>`;
+    return `
+      <tr>
+        <td style="line-height:1.25">
+          <strong style="color:var(--text-strong)">${e.name}</strong>
+          <span style="color:var(--muted);font-family:ui-monospace,monospace;font-size:0.8rem">&nbsp;${e.ticker}</span>
+          <div style="color:var(--muted);font-size:0.72rem">持股 ${total} 檔 · ${prevHint}</div>
+        </td>
+        ${cellNum(added, "warn")}
+        ${cellNum(inc, "up")}
+        ${cellNum(dec, "down")}
+        ${cellNum(removed, "")}
+      </tr>
+    `;
+  }).join("");
+
+  body.innerHTML = `
+    <div class="tbl-wrap">
+      <table class="dt">
+        <thead>
+          <tr>
+            <th>ETF 名稱</th>
+            <th style="text-align:right;color:var(--warn)">新增</th>
+            <th style="text-align:right;color:var(--up)">加碼</th>
+            <th style="text-align:right;color:var(--down)">減碼</th>
+            <th style="text-align:right">移出</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <p style="margin:0.85rem 0 0;font-size:0.78rem;color:var(--muted)">
+      💡 共 ${etf.etfs.length} 檔純台股主動式 ETF（Top 10 持股）· 資料源：yfinance funds_data
+    </p>
+  `;
+}
+
+// ====================== Active ETF cross-aggregation rank ======================
+// 對映圖二右區塊：跨 ETF 聚合，「被 N 家主動 ETF 持有」的個股排行。
+function renderEtfRank() {
+  const body = document.getElementById("etfRankBody");
+  const buyCntEl = document.getElementById("etfBuyCount");
+  const sellCntEl = document.getElementById("etfSellCount");
+  if (!body) return;
+  const etf = STATE.etf;
+  if (!etf || !etf.aggregated) {
+    body.innerHTML = `<div class="loading" style="color:var(--muted)">（etf.json 無聚合資料）</div>`;
+    return;
+  }
+  const buy = etf.aggregated.buy_rank || [];
+  const sell = etf.aggregated.sell_rank || [];
+  if (buyCntEl) buyCntEl.textContent = buy.length;
+  if (sellCntEl) sellCntEl.textContent = sell.length;
+
+  const list = STATE.etfRankTab === "sell" ? sell : buy;
+  const isBuy = STATE.etfRankTab === "buy";
+  const top = list.slice(0, 10);
+  if (!top.length) {
+    body.innerHTML = `<div class="loading" style="color:var(--muted)">${isBuy ? "（無買進統計）" : "（無賣出統計 — 首日無歷史對照）"}</div>`;
+    return;
+  }
+
+  function manifestLookup(stkTicker) {
+    return (STATE.manifest || []).find(m => m.ticker === stkTicker);
+  }
+  function shortName(name) {
+    // 去掉常見英文後綴
+    return (name || "").replace(/(Co|Corp|Ltd|Inc|Class A|Ordinary).*$/i, "").trim();
+  }
+  function chartHref(stkTicker, name) {
+    return `chart.html?ticker=${encodeURIComponent(stkTicker)}&name=${encodeURIComponent(name || "")}`;
+  }
+
+  const rows = top.map(r => {
+    const code = r.stock_ticker.replace(".TW", "").replace(".TWO", "").replace("O", "");
+    // 用 manifest 補中文名（如果有的話）
+    const fromManifest = manifestLookup(r.stock_ticker);
+    const displayName = (fromManifest && fromManifest.name) || shortName(r.stock_name) || code;
+    const cntCls = isBuy ? "up" : "down";
+    const cntArrow = isBuy ? "↗" : "↘";
+    const wChange = r.weight_change_sum;
+    const wChangePct = wChange != null ? (wChange * 100) : null;
+    const wCls = isBuy ? "up" : "down";
+    const wText = wChangePct != null
+      ? `${wChangePct >= 0 ? "+" : ""}${wChangePct.toFixed(2)}%`
+      : "—";
+    // 列出有持有的 ETF 代號 chip
+    const etfChips = (r.etf_tickers || []).slice(0, 6).map(t =>
+      `<span class="spot-tag" style="font-size:0.68rem;padding:0.1rem 0.4rem">${t}</span>`
+    ).join("");
+    return `
+      <div style="padding:0.7rem 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem">
+          <div style="flex:1">
+            <a href="${chartHref(r.stock_ticker, displayName)}" class="row-link" style="text-decoration:none;color:inherit">
+              <strong style="color:var(--text-strong)">${displayName}</strong>
+              <span style="color:var(--muted);font-family:ui-monospace,monospace;font-size:0.78rem">&nbsp;${code}</span>
+            </a>
+            <div style="margin-top:0.3rem;display:flex;gap:0.25rem;flex-wrap:wrap">${etfChips}</div>
+          </div>
+          <div style="text-align:right;white-space:nowrap">
+            <div class="num ${cntCls}" style="font-weight:700;font-size:0.95rem">${cntArrow} ${r.count} 家</div>
+            <div class="num ${wCls}" style="font-size:0.78rem;color:var(--muted)">${wText}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  const headerLabel = isBuy
+    ? `<span style="color:var(--up)">⊕ 主動買進</span> — 共 ${buy.length} 檔`
+    : `<span style="color:var(--down)">⊖ 主動賣出</span> — 共 ${sell.length} 檔`;
+  const subLabel = isBuy ? "ETF 家數 / 權重變動" : "減碼 + 移出";
+
+  body.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;color:var(--muted);padding:0.2rem 0 0.4rem">
+      <strong>${headerLabel}</strong>
+      <span>${subLabel}</span>
+    </div>
+    ${rows}
+    <p style="margin:0.85rem 0 0;font-size:0.78rem;color:var(--muted)">
+      💡 ETF 家數越多 = 機構共識越強 · 點個股看 K 線
+    </p>
+  `;
+}
+
 // ====================== Signals (technical alerts) ======================
 function renderSignals() {
   const arr = STATE.manifest;
@@ -1711,6 +1917,16 @@ function bindControls() {
       b.classList.add("active");
       STATE.signal.type = b.dataset.sig;
       renderSignals();
+    });
+  });
+
+  // 主動買賣統計 — buy / sell tab
+  document.querySelectorAll('.seg[data-group="etf-rank-tab"] .seg-btn').forEach(b => {
+    b.addEventListener("click", () => {
+      b.parentElement.querySelectorAll(".seg-btn").forEach(x => { x.classList.remove("active"); x.classList.remove("red"); });
+      b.classList.add("active"); b.classList.add("red");
+      STATE.etfRankTab = b.dataset.val;
+      renderEtfRank();
     });
   });
 
