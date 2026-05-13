@@ -774,7 +774,9 @@ table.dt td.num.warn { color: var(--gold); }
           <span class="section-sub">📅 即時抓取財經新聞 · 鉅亨網 / Yahoo / 自由財經</span>
         </div>
       </div>
-      <div class="date-pills" id="datePills"><!-- JS render: 7 天歷史 --></div>
+      <div class="date-pills" id="spotProgress" title="新聞 carousel 進度">
+        <button class="date-pill active" id="spotProgressPill" tabindex="-1">— / —</button>
+      </div>
     </div>
     <div class="section-body">
       <div class="spotlight-wrap">
@@ -782,7 +784,6 @@ table.dt td.num.warn { color: var(--gold); }
         <div class="spotlight-grid" id="spotlightGrid"><!-- JS render --></div>
         <button class="carousel-arrow next" id="spotNext" aria-label="下一頁">›</button>
       </div>
-      <div class="carousel-meta" id="spotMeta"></div>
     </div>
   </div>
 
@@ -1252,11 +1253,12 @@ function renderSpotlight() {
 }
 
 // 把 spotlight 變成水平 carousel — 一次顯示 4 張，左右箭頭水平滾動。
+// 進度顯示寫入右上角 #spotProgressPill（樣式同 date-pill，顯示「N–M / 18」）。
 function setupSpotlightCarousel(totalItems) {
   const grid = document.getElementById("spotlightGrid");
   const prev = document.getElementById("spotPrev");
   const next = document.getElementById("spotNext");
-  const meta = document.getElementById("spotMeta");
+  const progressPill = document.getElementById("spotProgressPill");
   if (!grid || !prev || !next) return;
 
   function stepWidth() {
@@ -1274,13 +1276,15 @@ function setupSpotlightCarousel(totalItems) {
     const max = grid.scrollWidth - grid.clientWidth - 2;
     prev.classList.toggle("disabled", grid.scrollLeft <= 2);
     next.classList.toggle("disabled", grid.scrollLeft >= max);
-    if (meta) {
-      const vis = visibleCount();
-      const start = Math.round(grid.scrollLeft / stepWidth()) + 1;
-      const end = Math.min(start + vis - 1, totalItems);
-      meta.textContent = totalItems > 0
-        ? `顯示第 ${start}–${end} 筆 / 共 ${totalItems} 筆 · ← → 切換或左右滑動`
-        : "";
+    if (progressPill) {
+      if (totalItems > 0) {
+        const vis = visibleCount();
+        const start = Math.round(grid.scrollLeft / stepWidth()) + 1;
+        const end = Math.min(start + vis - 1, totalItems);
+        progressPill.textContent = `${start}–${end} / ${totalItems}`;
+      } else {
+        progressPill.textContent = "— / —";
+      }
     }
   }
 
