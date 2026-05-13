@@ -898,7 +898,7 @@ header {
     const peerRows = peers.map(p => {
       const yh = (p.year_high == null) ? "—" : `${p.year_high >= 0 ? "+" : ""}${p.year_high.toFixed(1)}%`;
       const cls = (p.year_high || 0) >= 0 ? "up" : "down";
-      const url = `chart.html?ticker=${encodeURIComponent(p.ticker)}&name=${encodeURIComponent(p.name)}`;
+      const url = `chart?ticker=${encodeURIComponent(p.ticker)}&name=${encodeURIComponent(p.name)}`;
       return `
         <a href="${url}" style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0.8rem; background: var(--bg-deep); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 0.4rem; text-decoration: none; color: var(--text); transition: background 0.15s;"
            onmouseover="this.style.background='var(--card-hover)'" onmouseout="this.style.background='var(--bg-deep)'">

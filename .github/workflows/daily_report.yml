@@ -17,6 +17,12 @@ on:
 permissions:
   contents: read
 
+# 2026/9 後 GH Actions 預設 Node 24，先 opt-in 避免廢棄警告。
+# actions/cache@v4 / checkout@v4 / setup-python@v5 / wrangler-action@v3 仍是各 action 當前最新 v 版本，
+# 設這個 env var 讓它們在 Node 24 上跑。
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   tw-market-analysis:
     name: 🇹🇼 Taiwan Analysis

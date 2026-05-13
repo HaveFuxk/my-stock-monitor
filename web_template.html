@@ -1276,7 +1276,7 @@ const PCT = (v) => v == null ? "—" : (v >= 0 ? "+" : "") + Number(v).toFixed(2
 const fmt = (v, d=2) => v == null ? "—" : Number(v).toFixed(d);
 
 function chartUrl(it) {
-  return `chart.html?ticker=${encodeURIComponent(it.ticker)}&name=${encodeURIComponent(it.name || "")}`;
+  return `chart?ticker=${encodeURIComponent(it.ticker)}&name=${encodeURIComponent(it.name || "")}`;
 }
 
 function classifyMarket(ticker) {
@@ -1946,7 +1946,7 @@ function renderEtfRank() {
     return (name || "").replace(/(Co|Corp|Ltd|Inc|Class A|Ordinary).*$/i, "").trim();
   }
   function chartHref(stkTicker, name) {
-    return `chart.html?ticker=${encodeURIComponent(stkTicker)}&name=${encodeURIComponent(name || "")}`;
+    return `chart?ticker=${encodeURIComponent(stkTicker)}&name=${encodeURIComponent(name || "")}`;
   }
 
   const rows = top.map(r => {
@@ -2082,7 +2082,7 @@ function companyCard(co) {
     ? `<span class="imap-research-tag">📄 券商報告</span>`
     : "";
   return `
-    <a class="imap-company" href="chart.html?ticker=${encodeURIComponent(stockTicker)}&name=${encodeURIComponent(co.name)}">
+    <a class="imap-company" href="chart?ticker=${encodeURIComponent(stockTicker)}&name=${encodeURIComponent(co.name)}">
       <div class="imap-company-left">
         <div class="imap-company-name">${co.name} <span class="ticker">${co.ticker}</span> ${tierTag}</div>
         <div class="imap-tag-row">${relTag}${researchTag}</div>
