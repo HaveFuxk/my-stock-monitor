@@ -1331,7 +1331,6 @@ function renderAll() {
   renderAlert();
   renderStats();
   renderSpotlight();
-  renderDatePills();
   renderStrong();
   renderChips();
   renderHeatmap();
@@ -1572,60 +1571,10 @@ function setupSpotlightCarousel(totalItems) {
   setTimeout(update, 50);  // 等卡片渲染完算寬度
 }
 
-// ====================== Date pills (7-day snapshot switcher) ======================
-function renderDatePills() {
-  const snap = STATE.snapshots;
-  const el = document.getElementById("datePills");
-  if (!el) return;
-  if (!snap || !snap.dates || !snap.dates.length) {
-    el.innerHTML = `<button class="date-pill active">今日</button>`;
-    return;
-  }
-  const dates = snap.dates.slice(0, 7);
-  const cur = STATE.activeSnapshot || dates[0];
-  function shortDate(iso) {
-    // "2026-05-12" -> "05/12"
-    return iso.slice(5).replace("-", "/");
-  }
-  el.innerHTML = dates.map((d, i) => `
-    <button class="date-pill ${d === cur ? "active" : ""}" data-date="${d}">${shortDate(d)}</button>
-  `).join("");
-  el.querySelectorAll(".date-pill").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const d = btn.dataset.date;
-      if (!d || d === STATE.activeSnapshot) return;
-      el.querySelectorAll(".date-pill").forEach(x => x.classList.remove("active"));
-      btn.classList.add("active");
-      await switchSnapshot(d);
-    });
-  });
-}
-
-async function switchSnapshot(date) {
-  // 切到歷史快照：fetch snapshots/<date>.json，覆蓋 STATE.manifest，重 render 全部用 manifest 的 section
-  STATE.activeSnapshot = date;
-  // dates[0] 是今天，可直接用現成 manifest；其他日期 fetch snapshot
-  const latest = STATE.snapshots?.dates?.[0];
-  if (date === latest && STATE.manifestLatest) {
-    STATE.manifest = STATE.manifestLatest;
-  } else {
-    try {
-      const res = await fetch(`data/snapshots/${date}.json`, { cache: "no-store" });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      STATE.manifest = await res.json();
-    } catch (err) {
-      console.warn("[snapshot] fetch failed for", date, err);
-      return;
-    }
-  }
-  // 切日期後重 render manifest-driven 的所有 section（不含 news / macro / pill 本身）
-  renderAlert();
-  renderStats();
-  renderStrong();
-  renderChips();
-  renderHeatmap();
-  renderSignals();
-}
+// Note: 7 天歷史日期切換功能已隨 PR #6 carousel 進度 pill 改造移除（render fn 與
+// switchSnapshot 都已刪）。STATE.snapshots / activeSnapshot / manifestLatest 仍保留
+// 作為 future use（7 天歷史快照累積足夠後可加回日期 pill UI；目前 build_web.py 仍會
+// 寫 dist/data/snapshots/ 累積資料）。
 
 // ====================== Strong stocks table ======================
 function renderStrong() {

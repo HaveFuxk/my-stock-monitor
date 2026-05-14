@@ -675,6 +675,7 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     _build_etf_data()
     _copy_industry_maps()
     snap_count = _snapshot_today_manifest()
+    _write_cloudflare_routes()
 
     print("\n" + "=" * 60)
     print(f"🌐 [build_web] 靜態站已產出於 {DIST_DIR.resolve()}")
@@ -728,6 +729,31 @@ def _copy_industry_maps():
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
     print(f"✅ [industry_maps] 拷貝 {src} → {dst}")
+
+
+def _write_cloudflare_routes():
+    """寫 dist/_redirects + dist/404.html：阻止 Cloudflare Pages 對找不到的
+    /data/* 或 /images/* 走 SPA fallback 回 index.html（造成前端 JSON.parse 失敗）。
+    Audit 2026-05-13 發現：請求不存在的 /data/9999_TW.json 回 200 + index.html body。"""
+    redirects = (
+        "# Cloudflare Pages _redirects (audit 2026-05-13)\n"
+        "# 阻止 /data/* 與 /images/* 找不到時 fallback 回 index.html，改回真正的 404。\n"
+        "/data/*    /404.html    404\n"
+        "/images/*  /404.html    404\n"
+    )
+    not_found_html = (
+        "<!DOCTYPE html><html lang=\"zh-Hant\"><head><meta charset=\"UTF-8\">"
+        "<title>404 Not Found · my-stock-monitor</title>"
+        "<style>body{font-family:sans-serif;background:#0a0e14;color:#d4d8e0;"
+        "display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}"
+        "h1{font-size:5rem;margin:0;color:#06b6d4}p{color:#6b7280}a{color:#22d3ee}</style></head>"
+        "<body><div><h1>404</h1>"
+        "<p>找不到此資源（個股代號可能尚未納入監控）。</p>"
+        "<p><a href=\"/\">← 回首頁</a></p></div></body></html>"
+    )
+    (DIST_DIR / "_redirects").write_text(redirects, encoding="utf-8")
+    (DIST_DIR / "404.html").write_text(not_found_html, encoding="utf-8")
+    print(f"✅ [_redirects] 寫入 dist/_redirects + dist/404.html")
 
 
 def _snapshot_today_manifest() -> int:
