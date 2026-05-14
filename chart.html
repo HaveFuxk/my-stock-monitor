@@ -294,6 +294,73 @@ header {
   font-weight: 500;
 }
 
+/* === Related news (per-stock) === */
+.news-section { margin-bottom: 1.25rem; }
+.news-section:last-child { margin-bottom: 0; }
+.news-section-title {
+  margin: 0 0 0.6rem 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.news-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.news-item {
+  display: block;
+  padding: 0.7rem 0.9rem;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s;
+}
+.news-item:hover {
+  background: var(--card-hover);
+  border-color: var(--border-strong);
+}
+.news-item .news-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 0.25rem;
+  line-height: 1.4;
+}
+.news-item .news-summary {
+  font-size: 0.8rem;
+  color: var(--text);
+  line-height: 1.5;
+  margin-bottom: 0.4rem;
+  opacity: 0.85;
+}
+.news-item .news-meta {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  align-items: center;
+}
+.news-item .news-source {
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 0.1rem 0.45rem;
+  border-radius: 3px;
+  font-weight: 500;
+}
+.news-item .news-date { color: var(--muted); }
+.news-item .news-tag {
+  background: var(--border);
+  color: var(--muted);
+  padding: 0.1rem 0.45rem;
+  border-radius: 3px;
+  font-size: 0.7rem;
+}
+
 /* === Footer === */
 .footer {
   text-align: center;
@@ -423,6 +490,19 @@ header {
     <div id="peers-card" class="card" hidden>
       <h3>🏭 同產業 Top 5（依年漲幅）</h3>
       <div id="peers-content"></div>
+    </div>
+
+    <!-- 相關產業新聞（Phase 6）-->
+    <div id="news-card" class="card" hidden>
+      <h3>📰 相關產業新聞</h3>
+      <div class="news-section" id="news-section-direct" hidden>
+        <div class="news-section-title">📌 本檔提及</div>
+        <div class="news-list" id="news-list-direct"></div>
+      </div>
+      <div class="news-section" id="news-section-peer" hidden>
+        <div class="news-section-title">🏭 同產業相關</div>
+        <div class="news-list" id="news-list-peer"></div>
+      </div>
     </div>
 
     <!-- 進階產業分析：MOPS / 主要客戶 / 主要產品（仍 placeholder）-->
@@ -908,6 +988,100 @@ header {
       `;
     }).join("");
     document.getElementById("peers-content").innerHTML = peerRows;
+  }
+
+  // ====== 相關產業新聞（Phase 6）======
+  try {
+    const [newsRes, imRes] = await Promise.all([
+      fetch("data/news.json").then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch("data/industry_maps.json").then(r => r.ok ? r.json() : null).catch(() => null),
+    ]);
+    if (newsRes && Array.isArray(newsRes.items) && newsRes.items.length) {
+      const newsItems = newsRes.items;
+      // cleanCode 已在外層宣告（line ~470）；這裡直接複用
+
+      // 1) 本檔所屬產業 id（從 industry_maps）+ 同產業 peer ticker
+      const myIndustryIds = new Set();
+      const industrySiblings = new Set();
+      if (imRes && Array.isArray(imRes.industries)) {
+        for (const ind of imRes.industries) {
+          let here = false;
+          const allInInd = new Set();
+          for (const layer of (ind.layers || [])) {
+            for (const role of (layer.roles || [])) {
+              for (const c of (role.companies || [])) {
+                const full = `${c.ticker}.TW`;
+                allInInd.add(full);
+                if (full === ticker || c.ticker === cleanCode) here = true;
+              }
+            }
+          }
+          if (here) {
+            myIndustryIds.add(ind.id);
+            for (const t of allInInd) industrySiblings.add(t);
+          }
+        }
+      }
+      industrySiblings.delete(ticker);
+
+      // 2) yfinance peers（從 payload.peers）→ ticker set
+      const yfPeers = new Set((peers || []).map(p => p.ticker));
+
+      // 3) 分桶
+      const direct = [], peerNews = [], industryNews = [];
+      for (const n of newsItems) {
+        const mt = n.mentioned_tickers || [];
+        const it = n.industry_tags || [];
+        if (mt.includes(ticker)) {
+          direct.push(n);
+        } else if (mt.some(t => industrySiblings.has(t) || yfPeers.has(t))) {
+          peerNews.push(n);
+        } else if (it.some(i => myIndustryIds.has(i))) {
+          industryNews.push(n);
+        }
+      }
+
+      const totalMatched = direct.length + peerNews.length + industryNews.length;
+      if (totalMatched > 0) {
+        document.getElementById("news-card").hidden = false;
+
+        const esc = (s) => String(s == null ? "" : s)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        const renderItem = (n, badge) => {
+          const date = (n.published_at || "").slice(0, 10);
+          const src = esc(n.source || "");
+          const summary = n.summary ? `<div class="news-summary">${esc(n.summary)}</div>` : "";
+          const badgeHtml = badge ? `<span class="news-tag">${esc(badge)}</span>` : "";
+          return `
+            <a class="news-item" href="${esc(n.link)}" target="_blank" rel="noopener">
+              <div class="news-title">${esc(n.title)}</div>
+              ${summary}
+              <div class="news-meta">
+                <span class="news-source">${src}</span>
+                <span class="news-date">${esc(date)}</span>
+                ${badgeHtml}
+              </div>
+            </a>
+          `;
+        };
+
+        if (direct.length) {
+          document.getElementById("news-section-direct").hidden = false;
+          document.getElementById("news-list-direct").innerHTML = direct.slice(0, 6).map(n => renderItem(n, "")).join("");
+        }
+        // 把 peer 提及 + 產業關鍵字命中合併為「同產業相關」；標 badge 分辨來源
+        const merged = [
+          ...peerNews.map(n => ({ n, badge: "Peer" })),
+          ...industryNews.map(n => ({ n, badge: "產業關鍵字" })),
+        ];
+        if (merged.length) {
+          document.getElementById("news-section-peer").hidden = false;
+          document.getElementById("news-list-peer").innerHTML = merged.slice(0, 6).map(x => renderItem(x.n, x.badge)).join("");
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[news] 相關產業新聞載入失敗", e);
   }
 
   // Chart 2: 縮圖（概覽 tab）

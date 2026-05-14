@@ -1,6 +1,6 @@
 {
-  "version": "1.0",
-  "updated": "2026-05-13",
+  "version": "1.1",
+  "updated": "2026-05-14",
   "description": "產業地圖 — 人類維護的產業內部結構配置檔。每個產業含上中下游 × 角色 × 公司。",
   "tier_legend": {
     "leader":    { "label": "產業龍頭", "color": "green",  "dot": "●" },
@@ -16,6 +16,19 @@
       "id": "ai-server-odm",
       "name": "AI 伺服器｜整機組裝 (AI Server ODM)",
       "subtitle": "差異化核心分析 - 公司角色定位與關聯網絡",
+      "keywords": [
+        "AI 伺服器", "AI伺服器", "AI server", "AI Server",
+        "GPU 伺服器", "GPU", "輝達", "NVIDIA", "Nvidia",
+        "GB200", "GB300", "Blackwell", "Hopper", "H100", "H200",
+        "ODM", "整機櫃", "整機組裝", "ASIC",
+        "CoWoS", "COUPE", "矽光子", "光通訊",
+        "資料中心", "data center", "Data Center",
+        "雲端伺服器", "雲端服務", "AWS", "Azure", "Google Cloud", "CSP",
+        "推論", "訓練", "大型語言模型", "LLM",
+        "Cisco", "思科", "OpenAI", "Anthropic",
+        "AI 晶片", "AI晶片", "AI 半導體", "AI半導體",
+        "AI 訂單", "AI訂單", "AI 需求", "AI需求"
+      ],
       "layers": [
         {
           "title": "上游：核心模組與零組件",
