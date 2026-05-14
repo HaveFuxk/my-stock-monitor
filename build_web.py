@@ -701,12 +701,24 @@ def _build_macro_data():
 
 
 def _build_news_data():
-    """跑 downloader_news，寫 dist/data/news.json。容錯：抓不到不擋 build。"""
+    """跑 downloader_news 寫 dist/data/news.json，再用 news_tagger 給每篇加
+    mentioned_tickers 與 industry_tags（供 chart.html 個股頁過濾「本檔／同產業」相關新聞）。
+    容錯：news 抓不到 → 不擋 build；tagger 失敗 → news.json 仍可用（但缺 tag 欄位）。"""
     try:
         import downloader_news
         downloader_news.build_news_json()
     except Exception as e:
         print(f"⚠️ [build_web] news 抓取失敗（不影響其他資料）: {e}")
+        return
+    try:
+        import news_tagger
+        news_tagger.tag_news_file(
+            news_path=DIST_DIR / "data" / "news.json",
+            manifest_path=DIST_DIR / "data" / "manifest.json",
+            industry_maps_path=Path("config") / "industry_maps.json",
+        )
+    except Exception as e:
+        print(f"⚠️ [build_web] news_tagger 失敗（news.json 仍可用，但缺 mentioned_tickers / industry_tags）: {e}")
 
 
 def _build_etf_data():
