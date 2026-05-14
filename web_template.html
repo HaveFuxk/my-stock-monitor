@@ -8,6 +8,8 @@
 <meta name="build-time" content="__UPDATED_AT__">
 <meta name="sample-count" content="__SAMPLE_COUNT__">
 <meta name="market-id" content="__MARKET_ID__">
+<!-- Inline SVG favicon：青藍底 + 白「智」字，對映 logo-mark -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2306b6d4'/%3E%3Ctext x='50' y='72' font-size='62' text-anchor='middle' fill='white' font-family='-apple-system,sans-serif' font-weight='900'%3E%E6%99%BA%3C/text%3E%3C/svg%3E">
 <style>
 :root {
   --bg: #0a0e14;
@@ -1256,15 +1258,13 @@ const SECTOR_ZH = {
 
 const STATE = {
   manifest: [],
-  manifestLatest: [],       // 今日 manifest 副本，切歷史快照時 fallback 回來
   news: { items: [] },
   macro: null,
   etf: null,                // { etfs:[...], aggregated:{buy_rank:[...], sell_rank:[...]} }
   etfRankTab: "buy",        // 主動買賣統計 tab：buy / sell
   industryMaps: null,       // { industries: [{id, name, layers: [...]}] }
   imapMode: "cluster",      // cluster / diff / network
-  snapshots: null,          // { dates: ["2026-05-12", ...] }
-  activeSnapshot: null,
+  snapshots: null,          // { dates: ["2026-05-12", ...] } — for future date pill
   strong: { market: "all", period: "week_x" },
   chips: { who: "foreign", days: 10 },
   heat: { period: "month_high" },
@@ -1315,14 +1315,12 @@ async function loadAll() {
     document.querySelectorAll(".loading").forEach(el => el.textContent = "（無資料）");
   } else {
     STATE.manifest = manifest;
-    STATE.manifestLatest = manifest;
   }
   STATE.news = news || { items: [] };
   STATE.macro = macro;
   STATE.etf = etf;
   STATE.industryMaps = industryMaps;
   STATE.snapshots = snapshots;
-  STATE.activeSnapshot = snapshots?.dates?.[0] || null;
 
   renderAll();
 }
@@ -1571,10 +1569,10 @@ function setupSpotlightCarousel(totalItems) {
   setTimeout(update, 50);  // 等卡片渲染完算寬度
 }
 
-// Note: 7 天歷史日期切換功能已隨 PR #6 carousel 進度 pill 改造移除（render fn 與
-// switchSnapshot 都已刪）。STATE.snapshots / activeSnapshot / manifestLatest 仍保留
-// 作為 future use（7 天歷史快照累積足夠後可加回日期 pill UI；目前 build_web.py 仍會
-// 寫 dist/data/snapshots/ 累積資料）。
+// Note: 7 天歷史日期切換 UI 已隨 PR #6 carousel 改造移除（render fn 與 switch
+// 都刪除；對應 STATE 內 2 個 dead key 也已隨 audit v4 清掉）。STATE.snapshots
+// 仍保留作為 future use — 7 天歷史快照累積足夠後可加回日期 pill UI；目前
+// build_web.py 仍會寫 dist/data/snapshots/ 累積資料。
 
 // ====================== Strong stocks table ======================
 function renderStrong() {
