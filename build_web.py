@@ -807,6 +807,9 @@ def _build_tech_zone_data():
     # etf.json buy_rank / sell_rank → 主動 ETF 對該檔的傾向
     etf_path = DIST_DIR / "data" / "etf.json"
     etf_signal: dict[str, int] = {}  # ticker → net signal (+ = 加碼家數, - = 減碼)
+    # Wave 7+：etf.json 既給每家公司「被幾個 ETF 加減碼」的計數，也給「加碼/減碼名單」
+    etf_buy_holders: dict[str, list[str]] = {}   # ticker -> [etf_ticker, ...]
+    etf_sell_holders: dict[str, list[str]] = {}
     if etf_path.exists():
         try:
             etf = json.loads(etf_path.read_text(encoding="utf-8"))
@@ -814,13 +817,49 @@ def _build_tech_zone_data():
             for r in (agg.get("buy_rank") or []):
                 tk = r.get("stock_ticker")
                 if tk:
-                    etf_signal[tk] = etf_signal.get(tk, 0) + int(r.get("etf_count", 1) or 1)
+                    etf_signal[tk] = etf_signal.get(tk, 0) + int(r.get("count") or r.get("etf_count") or 1)
+                    etf_buy_holders[tk] = list(r.get("etf_tickers") or [])
             for r in (agg.get("sell_rank") or []):
                 tk = r.get("stock_ticker")
                 if tk:
-                    etf_signal[tk] = etf_signal.get(tk, 0) - int(r.get("etf_count", 1) or 1)
+                    etf_signal[tk] = etf_signal.get(tk, 0) - int(r.get("count") or r.get("etf_count") or 1)
+                    etf_sell_holders[tk] = list(r.get("etf_tickers") or [])
         except Exception as e:
             print(f"⚠️ [tech_zone] etf.json 讀取失敗，ETF 訊號會為 0: {e}")
+
+    # Wave 7+：對每家成員載入 per-stock JSON 取 info (PE / 市值 / 殖利率)
+    # 與 chips（三大法人 60 日累計）。檔案不在就 skip 該家。
+    def _enrich_member(ticker: str) -> dict:
+        safe = ticker.replace(".", "_").replace("/", "_")
+        path = DIST_DIR / "data" / f"{safe}.json"
+        if not path.exists():
+            return {}
+        try:
+            d = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        info = d.get("info") or {}
+        chips = d.get("chips") or []
+        chips_sum = None
+        if chips:
+            fn = sum((r.get("foreign_net") or 0) for r in chips)
+            tn = sum((r.get("trust_net") or 0) for r in chips)
+            dn = sum((r.get("dealer_net") or 0) for r in chips)
+            chips_sum = {
+                "days": len(chips),
+                "foreign_net": fn,
+                "trust_net": tn,
+                "dealer_net": dn,
+                "total_net": fn + tn + dn,
+            }
+        return {
+            "market_cap": info.get("marketCap"),
+            "trailing_pe": info.get("trailingPE"),
+            "dividend_yield": info.get("dividendYield"),
+            "fifty_two_week_high": info.get("fiftyTwoWeekHigh"),
+            "long_name": info.get("longName"),
+            "chips_60d": chips_sum,
+        }
 
     def _collect_members(ind: dict) -> set[str]:
         """從 industry 物件抓所有成員 4-碼 code（支援 layers 與 flat companies 兩種結構）。"""
@@ -835,6 +874,20 @@ def _build_tech_zone_data():
                 codes.add(c["ticker"])
         return codes
 
+    # Wave 7+：全市場 benchmark — 看產業漲幅相對市場中位數的強弱
+    all_yh = sorted([x["year_high"] for x in manifest if x.get("year_high") is not None])
+    all_mh = sorted([x["month_high"] for x in manifest if x.get("month_high") is not None])
+    all_wh = sorted([x["week_high"] for x in manifest if x.get("week_high") is not None])
+    def _median(arr):
+        return arr[len(arr) // 2] if arr else None
+    market_benchmark = {
+        "year_high_median": _median(all_yh),
+        "month_high_median": _median(all_mh),
+        "week_high_median": _median(all_wh),
+        "year_high_mean": (sum(all_yh) / len(all_yh)) if all_yh else None,
+        "sample_count": len(all_yh),
+    }
+
     industries_out = []
     for ind in imap.get("industries", []):
         codes = _collect_members(ind)
@@ -845,6 +898,7 @@ def _build_tech_zone_data():
             if not entry:
                 continue
             etf_sig = etf_signal.get(full, 0)
+            enrich = _enrich_member(full)
             members.append({
                 "ticker": full,
                 "name": entry.get("name") or "",
@@ -853,23 +907,60 @@ def _build_tech_zone_data():
                 "week_high": entry.get("week_high"),
                 "safe_id": entry.get("safe_id"),
                 "etf_signal": etf_sig,
+                "etf_buy_holders": etf_buy_holders.get(full, []),
+                "etf_sell_holders": etf_sell_holders.get(full, []),
                 "has_info": entry.get("has_info", False),
                 "has_chips": entry.get("has_chips", False),
+                # Wave 7+ 新增基本面 + 籌碼
+                "market_cap": enrich.get("market_cap"),
+                "trailing_pe": enrich.get("trailing_pe"),
+                "dividend_yield": enrich.get("dividend_yield"),
+                "fifty_two_week_high": enrich.get("fifty_two_week_high"),
+                "chips_60d": enrich.get("chips_60d"),
             })
 
         # 排序：依年漲幅遞減，None 排最後
         members.sort(key=lambda x: x.get("year_high") if x.get("year_high") is not None else -1e9, reverse=True)
-        valid_yh = [m["year_high"] for m in members if m.get("year_high") is not None]
-        avg_yh = sum(valid_yh) / len(valid_yh) if valid_yh else None
-        valid_yh_sorted = sorted(valid_yh)
-        median_yh = (
-            valid_yh_sorted[len(valid_yh_sorted) // 2]
-            if valid_yh_sorted else None
-        )
+
+        def _stats(values):
+            v = [x for x in values if x is not None]
+            if not v:
+                return {"avg": None, "median": None, "count": 0}
+            v_sorted = sorted(v)
+            return {
+                "avg": sum(v) / len(v),
+                "median": v_sorted[len(v_sorted) // 2],
+                "count": len(v),
+            }
+
+        yh_stats = _stats([m["year_high"] for m in members])
+        mh_stats = _stats([m["month_high"] for m in members])
+        wh_stats = _stats([m["week_high"] for m in members])
+
+        # 產業基本面 aggregates
+        mc_total = sum(m["market_cap"] for m in members if m.get("market_cap"))
+        pes = [m["trailing_pe"] for m in members if m.get("trailing_pe") and 0 < m["trailing_pe"] < 200]
+        dys = [m["dividend_yield"] for m in members if m.get("dividend_yield")]
+
+        # 產業 chips 60 日合計（從每家成員 sum）
+        chips_data = [m["chips_60d"] for m in members if m.get("chips_60d")]
+        chips_60d_total = None
+        if chips_data:
+            chips_60d_total = {
+                "members_with_data": len(chips_data),
+                "foreign_net": sum(c["foreign_net"] for c in chips_data),
+                "trust_net": sum(c["trust_net"] for c in chips_data),
+                "dealer_net": sum(c["dealer_net"] for c in chips_data),
+                "total_net": sum(c["total_net"] for c in chips_data),
+            }
 
         related_news = news_by_industry.get(ind["id"], [])
-        # 取最多 5 篇做 inline preview，全篇還是要去 news.json 過濾
         related_news_preview = related_news[:5]
+
+        # 相對市場強弱（avg year_high - market median）
+        rel_strength = None
+        if yh_stats["avg"] is not None and market_benchmark["year_high_median"] is not None:
+            rel_strength = yh_stats["avg"] - market_benchmark["year_high_median"]
 
         industries_out.append({
             "id": ind["id"],
@@ -879,10 +970,26 @@ def _build_tech_zone_data():
             "structure": "layers" if ind.get("layers") else "flat",
             "company_count_listed": len(codes),
             "company_count_matched": len(members),
-            "avg_year_high": avg_yh,
-            "median_year_high": median_yh,
+            # 漲幅：年/月/週
+            "avg_year_high": yh_stats["avg"],
+            "median_year_high": yh_stats["median"],
+            "avg_month_high": mh_stats["avg"],
+            "median_month_high": mh_stats["median"],
+            "avg_week_high": wh_stats["avg"],
+            "median_week_high": wh_stats["median"],
+            "rel_strength_year": rel_strength,
+            # 基本面
+            "market_cap_total": mc_total or None,
+            "avg_pe": (sum(pes) / len(pes)) if pes else None,
+            "pe_sample_count": len(pes),
+            "avg_dividend_yield": (sum(dys) / len(dys)) if dys else None,
+            "div_sample_count": len(dys),
+            # 籌碼
+            "chips_60d_total": chips_60d_total,
+            # 公司
             "top_companies": members[:10],
             "all_companies": members,
+            # 新聞 / ETF
             "news_count": len(related_news),
             "related_news": related_news_preview,
             "etf_buy_count": sum(1 for m in members if m.get("etf_signal", 0) > 0),
@@ -892,6 +999,7 @@ def _build_tech_zone_data():
     out = {
         "generated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
         "version": imap.get("version", "?"),
+        "market_benchmark": market_benchmark,
         "industries": industries_out,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)

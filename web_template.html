@@ -791,6 +791,140 @@ table.dt td.num.warn { color: var(--gold); }
 }
 .tz-company-card .tz-company-yh.up { color: var(--up); }
 .tz-company-card .tz-company-yh.down { color: var(--down); }
+.tz-company-card .tz-company-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.7rem;
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.tz-company-card .tz-company-meta .tz-meta-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.tz-company-card .tz-company-meta .tz-meta-label {
+  color: var(--muted);
+}
+.tz-company-card .tz-company-meta .tz-meta-value {
+  color: var(--text-strong);
+  font-weight: 500;
+  font-feature-settings: "tnum" 1;
+}
+.tz-company-card .tz-company-meta .tz-meta-value.up { color: var(--up); }
+.tz-company-card .tz-company-meta .tz-meta-value.down { color: var(--down); }
+.tz-company-card .tz-etf-list {
+  margin-top: 0.35rem;
+  font-size: 0.66rem;
+  color: var(--muted);
+  font-family: ui-monospace, "SF Mono", monospace;
+  letter-spacing: -0.02em;
+}
+
+/* 跨產業比較 table */
+.tz-compare {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+}
+.tz-compare h4 {
+  margin: 0 0 0.6rem 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.tz-compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.tz-compare-table th {
+  text-align: right;
+  padding: 0.4rem 0.5rem;
+  font-weight: 600;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+}
+.tz-compare-table th:first-child { text-align: left; }
+.tz-compare-table td {
+  padding: 0.45rem 0.5rem;
+  text-align: right;
+  font-feature-settings: "tnum" 1;
+  border-bottom: 1px solid var(--border);
+}
+.tz-compare-table td:first-child {
+  text-align: left;
+  color: var(--text-strong);
+  font-weight: 500;
+}
+.tz-compare-table tr:last-child td { border-bottom: none; }
+.tz-compare-table .tz-cmp-bar {
+  display: inline-block;
+  vertical-align: middle;
+  height: 6px;
+  background: var(--up);
+  border-radius: 3px;
+  margin-right: 0.4rem;
+  opacity: 0.5;
+}
+.tz-compare-table tr.active td:first-child {
+  color: var(--accent);
+  font-weight: 700;
+}
+.tz-compare-table tr.active td:first-child::before {
+  content: "▶ ";
+  color: var(--accent);
+}
+.tz-compare-table tr:hover {
+  background: var(--card-hover);
+  cursor: pointer;
+}
+
+/* 三大法人 + 基本面 tile（額外一排）*/
+.tz-extras {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+.tz-extra-tile {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+}
+.tz-extra-tile .tz-extra-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.tz-extra-tile .tz-extra-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  font-feature-settings: "tnum" 1;
+}
+.tz-extra-tile .tz-extra-value.up { color: var(--up); }
+.tz-extra-tile .tz-extra-value.down { color: var(--down); }
+.tz-extra-tile .tz-extra-sub {
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
+
 .tz-company-tag {
   display: inline-block;
   font-size: 0.65rem;
@@ -2268,7 +2402,72 @@ function renderTechZone() {
   const esc = (s) => String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-  // Pills
+  const fmtPct = (v, decimals) => {
+    if (v == null || isNaN(v)) return "—";
+    const d = decimals == null ? 1 : decimals;
+    return `${v >= 0 ? "+" : ""}${v.toFixed(d)}%`;
+  };
+  const pctCls = (v) => v == null ? "" : (v > 0 ? "up" : (v < 0 ? "down" : ""));
+  const fmtBigCap = (v) => {
+    if (v == null || isNaN(v)) return "—";
+    if (v >= 1e12) return (v / 1e12).toFixed(2) + " 兆";
+    if (v >= 1e8) return (v / 1e8).toFixed(0) + " 億";
+    if (v >= 1e4) return (v / 1e4).toFixed(0) + " 萬";
+    return v.toLocaleString();
+  };
+  // 三大法人 net 從股數 → 張數（÷1000）+ 萬張/千張單位
+  const fmtLot = (v) => {
+    if (v == null) return "—";
+    const lot = v / 1000;
+    if (Math.abs(lot) >= 10000) return `${lot >= 0 ? "+" : ""}${(lot / 10000).toFixed(1)} 萬張`;
+    return `${lot >= 0 ? "+" : ""}${Math.round(lot).toLocaleString()} 張`;
+  };
+
+  // ============ 跨產業比較 table ============
+  const ranked = data.industries
+    .map(x => ({ ...x, _yh: x.avg_year_high || 0 }))
+    .sort((a, b) => b._yh - a._yh);
+  const maxYh = Math.max(1, ...ranked.map(x => Math.abs(x._yh)));
+  const compareHtml = `
+    <div class="tz-compare">
+      <h4>📊 5 個產業強弱對比（依平均年漲幅排序）</h4>
+      <table class="tz-compare-table">
+        <thead>
+          <tr>
+            <th>產業</th>
+            <th>平均年漲</th>
+            <th>平均月漲</th>
+            <th>平均週漲</th>
+            <th>總市值</th>
+            <th>60 日外資</th>
+            <th>主動 ETF</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${ranked.map(x => {
+            const isActive = x.id === STATE.techZoneActive;
+            const barW = Math.round(Math.abs(x._yh) / maxYh * 60); // 0-60 px
+            const ch = x.chips_60d_total;
+            const foreignTxt = ch ? fmtLot(ch.foreign_net) : "—";
+            const foreignCls = ch ? pctCls(ch.foreign_net) : "";
+            return `
+              <tr class="${isActive ? 'active' : ''}" data-jump="${esc(x.id)}">
+                <td>${x.icon || '🔬'} ${esc(x.name)} <span style="color:var(--muted);font-weight:normal">×${x.company_count_matched}</span></td>
+                <td><span class="tz-cmp-bar" style="width:${barW}px"></span><span class="${pctCls(x.avg_year_high)}">${fmtPct(x.avg_year_high, 0)}</span></td>
+                <td class="${pctCls(x.avg_month_high)}">${fmtPct(x.avg_month_high, 1)}</td>
+                <td class="${pctCls(x.avg_week_high)}">${fmtPct(x.avg_week_high, 1)}</td>
+                <td>${fmtBigCap(x.market_cap_total)}</td>
+                <td class="${foreignCls}">${foreignTxt}</td>
+                <td><span class="up">+${x.etf_buy_count}</span> <span style="color:var(--muted)">/</span> <span class="down">-${x.etf_sell_count}</span></td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  // ============ Pills ============
   pillsEl.innerHTML = data.industries.map(ind => `
     <button class="tz-pill ${STATE.techZoneActive === ind.id ? 'active' : ''}" data-ind="${esc(ind.id)}">
       <span class="tz-pill-icon">${ind.icon || '🔬'}</span>
@@ -2277,17 +2476,12 @@ function renderTechZone() {
     </button>
   `).join("");
 
-  // Active industry detail
+  // ============ Active industry detail ============
   const ind = data.industries.find(x => x.id === STATE.techZoneActive) || data.industries[0];
+  const bench = data.market_benchmark || {};
 
-  const fmtPct = (v, decimals) => {
-    if (v == null || isNaN(v)) return "—";
-    const d = decimals == null ? 1 : decimals;
-    return `${v >= 0 ? "+" : ""}${v.toFixed(d)}%`;
-  };
-  const pctCls = (v) => v == null ? "" : (v > 0 ? "up" : (v < 0 ? "down" : ""));
-
-  // Summary tiles
+  // 6 個基本 stat tiles
+  const relStrength = ind.rel_strength_year;
   const summaryHtml = `
     <div class="tz-summary">
       <div class="tz-stat-tile">
@@ -2317,10 +2511,62 @@ function renderTechZone() {
     </div>
   `;
 
-  // Company cards
+  // 進階 extras：總市值 / 平均 PE / 殖利率 / 60日法人
+  const chips = ind.chips_60d_total;
+  const extraTiles = [];
+  if (ind.market_cap_total) {
+    extraTiles.push(`
+      <div class="tz-extra-tile">
+        <div class="tz-extra-label">💰 產業總市值</div>
+        <div class="tz-extra-value">${fmtBigCap(ind.market_cap_total)}</div>
+      </div>
+    `);
+  }
+  if (ind.avg_pe) {
+    extraTiles.push(`
+      <div class="tz-extra-tile">
+        <div class="tz-extra-label">📐 平均 PE</div>
+        <div class="tz-extra-value">${ind.avg_pe.toFixed(1)}</div>
+        <div class="tz-extra-sub">取樣 ${ind.pe_sample_count} 家</div>
+      </div>
+    `);
+  }
+  if (ind.avg_dividend_yield) {
+    extraTiles.push(`
+      <div class="tz-extra-tile">
+        <div class="tz-extra-label">💵 平均殖利率</div>
+        <div class="tz-extra-value">${ind.avg_dividend_yield.toFixed(2)}%</div>
+        <div class="tz-extra-sub">取樣 ${ind.div_sample_count} 家</div>
+      </div>
+    `);
+  }
+  if (relStrength != null) {
+    extraTiles.push(`
+      <div class="tz-extra-tile">
+        <div class="tz-extra-label">⚖️ 相對大盤強弱</div>
+        <div class="tz-extra-value ${pctCls(relStrength)}">${fmtPct(relStrength, 1)}</div>
+        <div class="tz-extra-sub">市場年漲中位 ${fmtPct(bench.year_high_median, 1)}</div>
+      </div>
+    `);
+  }
+  if (chips) {
+    extraTiles.push(`
+      <div class="tz-extra-tile">
+        <div class="tz-extra-label">🌐 60日外資淨買超</div>
+        <div class="tz-extra-value ${pctCls(chips.foreign_net)}">${fmtLot(chips.foreign_net)}</div>
+        <div class="tz-extra-sub">${chips.members_with_data}/${ind.company_count_matched} 家有資料</div>
+      </div>
+      <div class="tz-extra-tile">
+        <div class="tz-extra-label">🏦 60日投信淨買超</div>
+        <div class="tz-extra-value ${pctCls(chips.trust_net)}">${fmtLot(chips.trust_net)}</div>
+      </div>
+    `);
+  }
+  const extrasHtml = extraTiles.length ? `<div class="tz-extras">${extraTiles.join("")}</div>` : "";
+
+  // Company cards（擴增基本面 + ETF list）
   const cards = (ind.top_companies || []).map(c => {
     const yh = c.year_high;
-    const cls = pctCls(yh);
     const txt = fmtPct(yh, 0);
     let etfTag = "";
     if (c.etf_signal > 0) {
@@ -2328,12 +2574,33 @@ function renderTechZone() {
     } else if (c.etf_signal < 0) {
       etfTag = `<span class="tz-company-tag" style="background:rgba(239,68,68,0.18);color:var(--down)">📉 ETF×${Math.abs(c.etf_signal)}</span>`;
     }
+    // meta 列：月漲 + 市值 + PE
+    const metaParts = [];
+    if (c.month_high != null) {
+      metaParts.push(`<span class="tz-meta-row"><span class="tz-meta-label">月</span><span class="tz-meta-value ${pctCls(c.month_high)}">${fmtPct(c.month_high, 0)}</span></span>`);
+    }
+    if (c.market_cap) {
+      metaParts.push(`<span class="tz-meta-row"><span class="tz-meta-label">市值</span><span class="tz-meta-value">${fmtBigCap(c.market_cap)}</span></span>`);
+    }
+    if (c.trailing_pe && c.trailing_pe < 500) {
+      metaParts.push(`<span class="tz-meta-row"><span class="tz-meta-label">PE</span><span class="tz-meta-value">${c.trailing_pe.toFixed(1)}</span></span>`);
+    }
+    const metaHtml = metaParts.length
+      ? `<div class="tz-company-meta">${metaParts.join("")}</div>`
+      : "";
+    // ETF list（持有此檔的主動 ETF 代號）
+    const etfList = (c.etf_buy_holders || []).slice(0, 5);
+    const etfListHtml = etfList.length
+      ? `<div class="tz-etf-list">📈 ${etfList.join(" · ")}${c.etf_buy_holders.length > 5 ? ` +${c.etf_buy_holders.length - 5}` : ""}</div>`
+      : "";
     const url = `chart?ticker=${encodeURIComponent(c.ticker)}&name=${encodeURIComponent(c.name)}`;
     return `
       <a class="tz-company-card" href="${esc(url)}">
         <div class="tz-company-name">${esc(c.name)}${etfTag}</div>
         <div class="tz-company-ticker">${esc(c.ticker)}</div>
-        <div class="tz-company-yh ${cls}">${txt}</div>
+        <div class="tz-company-yh ${pctCls(yh)}">${txt}</div>
+        ${metaHtml}
+        ${etfListHtml}
       </a>
     `;
   }).join("");
@@ -2358,8 +2625,10 @@ function renderTechZone() {
     : `<div class="tz-news"><h4>📰 相關產業新聞</h4><div class="tz-news-empty">今日無相關產業新聞</div></div>`;
 
   bodyEl.innerHTML = `
+    ${compareHtml}
     <div class="tz-subtitle">${esc(ind.subtitle)}</div>
     ${summaryHtml}
+    ${extrasHtml}
     ${companiesHtml}
     ${newsHtml}
   `;
@@ -2368,6 +2637,13 @@ function renderTechZone() {
   pillsEl.querySelectorAll(".tz-pill").forEach(btn => {
     btn.addEventListener("click", () => {
       STATE.techZoneActive = btn.dataset.ind;
+      renderTechZone();
+    });
+  });
+  // Compare table row click 也可以 switch
+  bodyEl.querySelectorAll(".tz-compare-table tr[data-jump]").forEach(row => {
+    row.addEventListener("click", () => {
+      STATE.techZoneActive = row.dataset.jump;
       renderTechZone();
     });
   });
