@@ -1591,6 +1591,7 @@ const STATE = {
   snapshots: null,          // { dates: ["2026-05-12", ...] } — for future date pill
   techZone: null,           // { industries: [{id, name, top_companies:[...], avg_year_high, ...}] }
   techZoneActive: null,     // 目前選中的子產業 id（pill 切換）
+  techZoneClickBound: false, // 確保 event delegation 只綁一次
   strong: { market: "all", period: "week_x" },
   chips: { who: "foreign", days: 10 },
   heat: { period: "month_high" },
@@ -1600,6 +1601,28 @@ const STATE = {
 const TWD = (v) => Number(v).toLocaleString("zh-Hant", { maximumFractionDigits: 2 });
 const PCT = (v) => v == null ? "—" : (v >= 0 ? "+" : "") + Number(v).toFixed(2) + "%";
 const fmt = (v, d=2) => v == null ? "—" : Number(v).toFixed(d);
+
+// Format helpers used by tech-zone + future renderers (escape HTML, format %, big numbers, 張數 from 股數)
+const escHtml = (s) => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const fmtPct = (v, decimals = 1) => {
+  if (v == null || isNaN(v)) return "—";
+  return `${v >= 0 ? "+" : ""}${v.toFixed(decimals)}%`;
+};
+const pctCls = (v) => v == null ? "" : (v > 0 ? "up" : (v < 0 ? "down" : ""));
+const fmtBigCap = (v) => {
+  if (v == null || isNaN(v)) return "—";
+  if (v >= 1e12) return (v / 1e12).toFixed(2) + " 兆";
+  if (v >= 1e8) return (v / 1e8).toFixed(0) + " 億";
+  if (v >= 1e4) return (v / 1e4).toFixed(0) + " 萬";
+  return v.toLocaleString();
+};
+const fmtLot = (v) => {
+  if (v == null) return "—";
+  const lot = v / 1000;  // 股 → 張
+  if (Math.abs(lot) >= 10000) return `${lot >= 0 ? "+" : ""}${(lot / 10000).toFixed(1)} 萬張`;
+  return `${lot >= 0 ? "+" : ""}${Math.round(lot).toLocaleString()} 張`;
+};
 
 function chartUrl(it) {
   return `chart?ticker=${encodeURIComponent(it.ticker)}&name=${encodeURIComponent(it.name || "")}`;
@@ -2398,30 +2421,7 @@ function renderTechZone() {
     STATE.techZoneActive = data.industries[0].id;
   }
   if (badgeEl) badgeEl.textContent = `${data.industries.length} 產業`;
-
-  const esc = (s) => String(s == null ? "" : s)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
-  const fmtPct = (v, decimals) => {
-    if (v == null || isNaN(v)) return "—";
-    const d = decimals == null ? 1 : decimals;
-    return `${v >= 0 ? "+" : ""}${v.toFixed(d)}%`;
-  };
-  const pctCls = (v) => v == null ? "" : (v > 0 ? "up" : (v < 0 ? "down" : ""));
-  const fmtBigCap = (v) => {
-    if (v == null || isNaN(v)) return "—";
-    if (v >= 1e12) return (v / 1e12).toFixed(2) + " 兆";
-    if (v >= 1e8) return (v / 1e8).toFixed(0) + " 億";
-    if (v >= 1e4) return (v / 1e4).toFixed(0) + " 萬";
-    return v.toLocaleString();
-  };
-  // 三大法人 net 從股數 → 張數（÷1000）+ 萬張/千張單位
-  const fmtLot = (v) => {
-    if (v == null) return "—";
-    const lot = v / 1000;
-    if (Math.abs(lot) >= 10000) return `${lot >= 0 ? "+" : ""}${(lot / 10000).toFixed(1)} 萬張`;
-    return `${lot >= 0 ? "+" : ""}${Math.round(lot).toLocaleString()} 張`;
-  };
+  const esc = escHtml;  // local alias for shorter template literal
 
   // ============ 跨產業比較 table ============
   const ranked = data.industries
@@ -2451,7 +2451,7 @@ function renderTechZone() {
             const foreignTxt = ch ? fmtLot(ch.foreign_net) : "—";
             const foreignCls = ch ? pctCls(ch.foreign_net) : "";
             return `
-              <tr class="${isActive ? 'active' : ''}" data-jump="${esc(x.id)}">
+              <tr class="${isActive ? 'active' : ''}" data-ind="${esc(x.id)}">
                 <td>${x.icon || '🔬'} ${esc(x.name)} <span style="color:var(--muted);font-weight:normal">×${x.company_count_matched}</span></td>
                 <td><span class="tz-cmp-bar" style="width:${barW}px"></span><span class="${pctCls(x.avg_year_high)}">${fmtPct(x.avg_year_high, 0)}</span></td>
                 <td class="${pctCls(x.avg_month_high)}">${fmtPct(x.avg_month_high, 1)}</td>
@@ -2511,84 +2511,54 @@ function renderTechZone() {
     </div>
   `;
 
-  // 進階 extras：總市值 / 平均 PE / 殖利率 / 60日法人
+  // 進階 extras：總市值 / 平均 PE / 殖利率 / 60日法人。先用宣告式 config 收集，
+  // 再 join — 比 if + push 鏈短一半，guard 一致用 value != null。
   const chips = ind.chips_60d_total;
-  const extraTiles = [];
-  if (ind.market_cap_total) {
-    extraTiles.push(`
+  const mkTile = (label, value, opts = {}) => {
+    if (value == null) return "";
+    const sub = opts.sub ? `<div class="tz-extra-sub">${opts.sub}</div>` : "";
+    return `
       <div class="tz-extra-tile">
-        <div class="tz-extra-label">💰 產業總市值</div>
-        <div class="tz-extra-value">${fmtBigCap(ind.market_cap_total)}</div>
+        <div class="tz-extra-label">${label}</div>
+        <div class="tz-extra-value ${opts.cls || ""}">${value}</div>
+        ${sub}
       </div>
-    `);
-  }
-  if (ind.avg_pe) {
-    extraTiles.push(`
-      <div class="tz-extra-tile">
-        <div class="tz-extra-label">📐 平均 PE</div>
-        <div class="tz-extra-value">${ind.avg_pe.toFixed(1)}</div>
-        <div class="tz-extra-sub">取樣 ${ind.pe_sample_count} 家</div>
-      </div>
-    `);
-  }
-  if (ind.avg_dividend_yield) {
-    extraTiles.push(`
-      <div class="tz-extra-tile">
-        <div class="tz-extra-label">💵 平均殖利率</div>
-        <div class="tz-extra-value">${ind.avg_dividend_yield.toFixed(2)}%</div>
-        <div class="tz-extra-sub">取樣 ${ind.div_sample_count} 家</div>
-      </div>
-    `);
-  }
-  if (relStrength != null) {
-    extraTiles.push(`
-      <div class="tz-extra-tile">
-        <div class="tz-extra-label">⚖️ 相對大盤強弱</div>
-        <div class="tz-extra-value ${pctCls(relStrength)}">${fmtPct(relStrength, 1)}</div>
-        <div class="tz-extra-sub">市場年漲中位 ${fmtPct(bench.year_high_median, 1)}</div>
-      </div>
-    `);
-  }
-  if (chips) {
-    extraTiles.push(`
-      <div class="tz-extra-tile">
-        <div class="tz-extra-label">🌐 60日外資淨買超</div>
-        <div class="tz-extra-value ${pctCls(chips.foreign_net)}">${fmtLot(chips.foreign_net)}</div>
-        <div class="tz-extra-sub">${chips.members_with_data}/${ind.company_count_matched} 家有資料</div>
-      </div>
-      <div class="tz-extra-tile">
-        <div class="tz-extra-label">🏦 60日投信淨買超</div>
-        <div class="tz-extra-value ${pctCls(chips.trust_net)}">${fmtLot(chips.trust_net)}</div>
-      </div>
-    `);
-  }
-  const extrasHtml = extraTiles.length ? `<div class="tz-extras">${extraTiles.join("")}</div>` : "";
+    `;
+  };
+  const tiles = [
+    mkTile("💰 產業總市值", ind.market_cap_total ? fmtBigCap(ind.market_cap_total) : null),
+    mkTile("📐 平均 PE", ind.avg_pe ? ind.avg_pe.toFixed(1) : null,
+      { sub: ind.avg_pe ? `取樣 ${ind.pe_sample_count} 家` : null }),
+    mkTile("💵 平均殖利率", ind.avg_dividend_yield ? ind.avg_dividend_yield.toFixed(2) + "%" : null,
+      { sub: ind.avg_dividend_yield ? `取樣 ${ind.div_sample_count} 家` : null }),
+    mkTile("⚖️ 相對大盤強弱", relStrength != null ? fmtPct(relStrength, 1) : null,
+      { cls: pctCls(relStrength), sub: relStrength != null ? `市場年漲中位 ${fmtPct(bench.year_high_median, 1)}` : null }),
+    mkTile("🌐 60日外資淨買超", chips ? fmtLot(chips.foreign_net) : null,
+      { cls: chips ? pctCls(chips.foreign_net) : "", sub: chips ? `${chips.members_with_data}/${ind.company_count_matched} 家有資料` : null }),
+    mkTile("🏦 60日投信淨買超", chips ? fmtLot(chips.trust_net) : null,
+      { cls: chips ? pctCls(chips.trust_net) : "" }),
+  ].filter(Boolean);
+  const extrasHtml = tiles.length ? `<div class="tz-extras">${tiles.join("")}</div>` : "";
 
   // Company cards（擴增基本面 + ETF list）
+  const etfTagHtml = (sig) => {
+    if (!sig) return "";
+    const isBuy = sig > 0;
+    const bg = isBuy ? "rgba(34,197,94,0.18)" : "rgba(239,68,68,0.18)";
+    const color = isBuy ? "var(--up)" : "var(--down)";
+    const icon = isBuy ? "📈" : "📉";
+    return `<span class="tz-company-tag" style="background:${bg};color:${color}">${icon} ETF×${Math.abs(sig)}</span>`;
+  };
+  const metaRow = (label, value, valueCls = "") =>
+    `<span class="tz-meta-row"><span class="tz-meta-label">${label}</span><span class="tz-meta-value ${valueCls}">${value}</span></span>`;
+
   const cards = (ind.top_companies || []).map(c => {
-    const yh = c.year_high;
-    const txt = fmtPct(yh, 0);
-    let etfTag = "";
-    if (c.etf_signal > 0) {
-      etfTag = `<span class="tz-company-tag" style="background:rgba(34,197,94,0.18);color:var(--up)">📈 ETF×${c.etf_signal}</span>`;
-    } else if (c.etf_signal < 0) {
-      etfTag = `<span class="tz-company-tag" style="background:rgba(239,68,68,0.18);color:var(--down)">📉 ETF×${Math.abs(c.etf_signal)}</span>`;
-    }
-    // meta 列：月漲 + 市值 + PE
-    const metaParts = [];
-    if (c.month_high != null) {
-      metaParts.push(`<span class="tz-meta-row"><span class="tz-meta-label">月</span><span class="tz-meta-value ${pctCls(c.month_high)}">${fmtPct(c.month_high, 0)}</span></span>`);
-    }
-    if (c.market_cap) {
-      metaParts.push(`<span class="tz-meta-row"><span class="tz-meta-label">市值</span><span class="tz-meta-value">${fmtBigCap(c.market_cap)}</span></span>`);
-    }
-    if (c.trailing_pe && c.trailing_pe < 500) {
-      metaParts.push(`<span class="tz-meta-row"><span class="tz-meta-label">PE</span><span class="tz-meta-value">${c.trailing_pe.toFixed(1)}</span></span>`);
-    }
-    const metaHtml = metaParts.length
-      ? `<div class="tz-company-meta">${metaParts.join("")}</div>`
-      : "";
-    // ETF list（持有此檔的主動 ETF 代號）
+    const metaParts = [
+      c.month_high != null ? metaRow("月", fmtPct(c.month_high, 0), pctCls(c.month_high)) : "",
+      c.market_cap ? metaRow("市值", fmtBigCap(c.market_cap)) : "",
+      (c.trailing_pe && c.trailing_pe < 500) ? metaRow("PE", c.trailing_pe.toFixed(1)) : "",
+    ].filter(Boolean);
+    const metaHtml = metaParts.length ? `<div class="tz-company-meta">${metaParts.join("")}</div>` : "";
     const etfList = (c.etf_buy_holders || []).slice(0, 5);
     const etfListHtml = etfList.length
       ? `<div class="tz-etf-list">📈 ${etfList.join(" · ")}${c.etf_buy_holders.length > 5 ? ` +${c.etf_buy_holders.length - 5}` : ""}</div>`
@@ -2596,9 +2566,9 @@ function renderTechZone() {
     const url = `chart?ticker=${encodeURIComponent(c.ticker)}&name=${encodeURIComponent(c.name)}`;
     return `
       <a class="tz-company-card" href="${esc(url)}">
-        <div class="tz-company-name">${esc(c.name)}${etfTag}</div>
+        <div class="tz-company-name">${esc(c.name)}${etfTagHtml(c.etf_signal)}</div>
         <div class="tz-company-ticker">${esc(c.ticker)}</div>
-        <div class="tz-company-yh ${pctCls(yh)}">${txt}</div>
+        <div class="tz-company-yh ${pctCls(c.year_high)}">${fmtPct(c.year_high, 0)}</div>
         ${metaHtml}
         ${etfListHtml}
       </a>
@@ -2633,20 +2603,17 @@ function renderTechZone() {
     ${newsHtml}
   `;
 
-  // Pill click switching
-  pillsEl.querySelectorAll(".tz-pill").forEach(btn => {
-    btn.addEventListener("click", () => {
-      STATE.techZoneActive = btn.dataset.ind;
+  // 統一 click handler — pill 與 compare table row 都用 data-ind，
+  // 透過 event delegation 一次綁在 section 上，避免每次 render 重綁 N 個 listener。
+  if (!STATE.techZoneClickBound) {
+    document.getElementById("tech-zone").addEventListener("click", (e) => {
+      const el = e.target.closest("[data-ind]");
+      if (!el) return;
+      STATE.techZoneActive = el.dataset.ind;
       renderTechZone();
     });
-  });
-  // Compare table row click 也可以 switch
-  bodyEl.querySelectorAll(".tz-compare-table tr[data-jump]").forEach(row => {
-    row.addEventListener("click", () => {
-      STATE.techZoneActive = row.dataset.jump;
-      renderTechZone();
-    });
-  });
+    STATE.techZoneClickBound = true;
+  }
 }
 
 // ====================== Signals (technical alerts) ======================
