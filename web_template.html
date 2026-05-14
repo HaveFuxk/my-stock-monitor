@@ -674,6 +674,173 @@ table.dt td.num.warn { color: var(--gold); }
   font-size: 0.78rem;
 }
 
+/* === Tech Zone（半導體 / AI 科技業分析）=== */
+.tech-zone-pills {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+.tz-pill {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.42rem 0.85rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: all 0.15s;
+}
+.tz-pill:hover { border-color: var(--accent); color: var(--text-strong); }
+.tz-pill.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.tz-pill .tz-pill-icon { font-size: 1.05rem; }
+.tz-pill .tz-pill-count {
+  background: var(--border);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+}
+.tz-pill.active .tz-pill-count {
+  background: var(--accent);
+  color: var(--bg-deep);
+}
+.tz-subtitle {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+.tz-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.85rem;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.tz-stat-tile { text-align: center; }
+.tz-stat-tile .tz-stat-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+  letter-spacing: 0.02em;
+}
+.tz-stat-tile .tz-stat-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  font-feature-settings: "tnum" 1;
+}
+.tz-stat-tile .tz-stat-value.up { color: var(--up); }
+.tz-stat-tile .tz-stat-value.down { color: var(--down); }
+.tz-companies {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+.tz-company-card {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+  text-decoration: none;
+  color: var(--text);
+  display: block;
+  transition: all 0.15s;
+  position: relative;
+}
+.tz-company-card:hover {
+  border-color: var(--accent);
+  background: var(--card-hover);
+  transform: translateY(-1px);
+}
+.tz-company-card .tz-company-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 0.15rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.tz-company-card .tz-company-ticker {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-family: ui-monospace, "SF Mono", monospace;
+  margin-bottom: 0.45rem;
+}
+.tz-company-card .tz-company-yh {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-feature-settings: "tnum" 1;
+}
+.tz-company-card .tz-company-yh.up { color: var(--up); }
+.tz-company-card .tz-company-yh.down { color: var(--down); }
+.tz-company-tag {
+  display: inline-block;
+  font-size: 0.65rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.tz-news {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+}
+.tz-news h4 {
+  margin: 0 0 0.55rem 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.tz-news a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+.tz-news a:last-child { border-bottom: none; }
+.tz-news a:hover { color: var(--accent); }
+.tz-news .tz-news-source {
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  background: var(--bg);
+  padding: 0.05rem 0.45rem;
+  border-radius: 3px;
+}
+.tz-news-empty {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 0.75rem 0;
+}
+
 /* === Loading state === */
 .loading {
   text-align: center;
@@ -943,6 +1110,7 @@ table.dt td.num.warn { color: var(--gold); }
     <button class="tab-btn" data-anchor="chips">三大法人</button>
     <button class="tab-btn" data-anchor="active-etf">主動 ETF</button>
     <button class="tab-btn" data-anchor="industry-map">產業地圖</button>
+    <button class="tab-btn" data-anchor="tech-zone">科技分析</button>
     <button class="tab-btn" data-anchor="signals">技術訊號</button>
     <button class="tab-btn" data-anchor="distribution">動能分布</button>
   </nav>
@@ -1169,6 +1337,28 @@ table.dt td.num.warn { color: var(--gold); }
     </div>
   </section>
 
+  <!-- ============ Tech Zone（半導體 / AI 科技業分析）============ -->
+  <section id="tech-zone">
+    <div class="section-card">
+      <div class="section-head">
+        <div class="section-title">
+          <span class="title-icon" style="color: #06b6d4;">🔬</span>
+          <div>
+            <h2>半導體 / AI 科技業分析</h2>
+            <span class="section-sub">關鍵子產業 × 重點公司表現 × 主動 ETF 動向 × 相關新聞</span>
+          </div>
+        </div>
+        <span class="section-badge" id="techZoneBadge">0 產業</span>
+      </div>
+      <div class="section-body">
+        <div class="tech-zone-pills" id="techZonePills">
+          <div class="loading" style="margin:0">資料載入中…</div>
+        </div>
+        <div id="techZoneBody"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ Industry Map（產業地圖：上中下游 × 角色 × 公司）============ -->
   <section id="industry-map">
     <div class="section-card">
@@ -1265,6 +1455,8 @@ const STATE = {
   industryMaps: null,       // { industries: [{id, name, layers: [...]}] }
   imapMode: "cluster",      // cluster / diff / network
   snapshots: null,          // { dates: ["2026-05-12", ...] } — for future date pill
+  techZone: null,           // { industries: [{id, name, top_companies:[...], avg_year_high, ...}] }
+  techZoneActive: null,     // 目前選中的子產業 id（pill 切換）
   strong: { market: "all", period: "week_x" },
   chips: { who: "foreign", days: 10 },
   heat: { period: "month_high" },
@@ -1299,14 +1491,15 @@ async function fetchJson(url, fallback = null) {
 }
 
 async function loadAll() {
-  // 6 個 endpoint 並行 fetch，個別失敗不擋住其他 section render
-  const [manifest, news, macro, etf, industryMaps, snapshots] = await Promise.all([
+  // 7 個 endpoint 並行 fetch，個別失敗不擋住其他 section render
+  const [manifest, news, macro, etf, industryMaps, snapshots, techZone] = await Promise.all([
     fetchJson("data/manifest.json", null),
     fetchJson("data/news.json", { items: [] }),
     fetchJson("data/macro.json", null),
     fetchJson("data/etf.json", null),
     fetchJson("data/industry_maps.json", null),
     fetchJson("data/snapshots/index.json", null),
+    fetchJson("data/tech_zone.json", null),
   ]);
 
   if (!manifest) {
@@ -1321,6 +1514,7 @@ async function loadAll() {
   STATE.etf = etf;
   STATE.industryMaps = industryMaps;
   STATE.snapshots = snapshots;
+  STATE.techZone = techZone;
 
   renderAll();
 }
@@ -1337,6 +1531,7 @@ function renderAll() {
   renderEtfTrack();
   renderEtfRank();
   renderIndustryMap();
+  renderTechZone();
   renderSignals();
   renderDistribution();
 }
@@ -2048,6 +2243,134 @@ function resolveTickerFromManifest(code) {
     if (stripped === code) return m.ticker;
   }
   return null;
+}
+
+// ====================== Tech Zone（半導體 / AI 科技業分析）======================
+function renderTechZone() {
+  const data = STATE.techZone;
+  const pillsEl = document.getElementById("techZonePills");
+  const bodyEl = document.getElementById("techZoneBody");
+  const badgeEl = document.getElementById("techZoneBadge");
+  if (!pillsEl || !bodyEl) return;
+
+  if (!data || !Array.isArray(data.industries) || data.industries.length === 0) {
+    pillsEl.innerHTML = `<div class="loading" style="margin:0;color:var(--muted)">（tech_zone.json 無資料）</div>`;
+    bodyEl.innerHTML = "";
+    if (badgeEl) badgeEl.textContent = "0 產業";
+    return;
+  }
+
+  if (!STATE.techZoneActive || !data.industries.find(x => x.id === STATE.techZoneActive)) {
+    STATE.techZoneActive = data.industries[0].id;
+  }
+  if (badgeEl) badgeEl.textContent = `${data.industries.length} 產業`;
+
+  const esc = (s) => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  // Pills
+  pillsEl.innerHTML = data.industries.map(ind => `
+    <button class="tz-pill ${STATE.techZoneActive === ind.id ? 'active' : ''}" data-ind="${esc(ind.id)}">
+      <span class="tz-pill-icon">${ind.icon || '🔬'}</span>
+      <span>${esc(ind.name)}</span>
+      <span class="tz-pill-count">${ind.company_count_matched}</span>
+    </button>
+  `).join("");
+
+  // Active industry detail
+  const ind = data.industries.find(x => x.id === STATE.techZoneActive) || data.industries[0];
+
+  const fmtPct = (v, decimals) => {
+    if (v == null || isNaN(v)) return "—";
+    const d = decimals == null ? 1 : decimals;
+    return `${v >= 0 ? "+" : ""}${v.toFixed(d)}%`;
+  };
+  const pctCls = (v) => v == null ? "" : (v > 0 ? "up" : (v < 0 ? "down" : ""));
+
+  // Summary tiles
+  const summaryHtml = `
+    <div class="tz-summary">
+      <div class="tz-stat-tile">
+        <div class="tz-stat-label">公司數</div>
+        <div class="tz-stat-value">${ind.company_count_matched}</div>
+      </div>
+      <div class="tz-stat-tile">
+        <div class="tz-stat-label">平均年漲</div>
+        <div class="tz-stat-value ${pctCls(ind.avg_year_high)}">${fmtPct(ind.avg_year_high)}</div>
+      </div>
+      <div class="tz-stat-tile">
+        <div class="tz-stat-label">中位年漲</div>
+        <div class="tz-stat-value ${pctCls(ind.median_year_high)}">${fmtPct(ind.median_year_high)}</div>
+      </div>
+      <div class="tz-stat-tile">
+        <div class="tz-stat-label">相關新聞</div>
+        <div class="tz-stat-value">${ind.news_count}</div>
+      </div>
+      <div class="tz-stat-tile">
+        <div class="tz-stat-label">主動 ETF 加碼</div>
+        <div class="tz-stat-value up">${ind.etf_buy_count}</div>
+      </div>
+      <div class="tz-stat-tile">
+        <div class="tz-stat-label">主動 ETF 減碼</div>
+        <div class="tz-stat-value down">${ind.etf_sell_count}</div>
+      </div>
+    </div>
+  `;
+
+  // Company cards
+  const cards = (ind.top_companies || []).map(c => {
+    const yh = c.year_high;
+    const cls = pctCls(yh);
+    const txt = fmtPct(yh, 0);
+    let etfTag = "";
+    if (c.etf_signal > 0) {
+      etfTag = `<span class="tz-company-tag" style="background:rgba(34,197,94,0.18);color:var(--up)">📈 ETF×${c.etf_signal}</span>`;
+    } else if (c.etf_signal < 0) {
+      etfTag = `<span class="tz-company-tag" style="background:rgba(239,68,68,0.18);color:var(--down)">📉 ETF×${Math.abs(c.etf_signal)}</span>`;
+    }
+    const url = `chart?ticker=${encodeURIComponent(c.ticker)}&name=${encodeURIComponent(c.name)}`;
+    return `
+      <a class="tz-company-card" href="${esc(url)}">
+        <div class="tz-company-name">${esc(c.name)}${etfTag}</div>
+        <div class="tz-company-ticker">${esc(c.ticker)}</div>
+        <div class="tz-company-yh ${cls}">${txt}</div>
+      </a>
+    `;
+  }).join("");
+  const companiesHtml = cards
+    ? `<div class="tz-companies">${cards}</div>`
+    : `<div class="tz-news-empty">（此產業無 manifest 對應公司）</div>`;
+
+  // Related news
+  const newsItems = (ind.related_news || []).slice(0, 5);
+  const newsHtml = newsItems.length
+    ? `
+      <div class="tz-news">
+        <h4>📰 相關產業新聞（共 ${ind.news_count} 篇）</h4>
+        ${newsItems.map(n => `
+          <a href="${esc(n.link)}" target="_blank" rel="noopener">
+            <span>${esc(n.title)}</span>
+            <span class="tz-news-source">${esc(n.source)}</span>
+          </a>
+        `).join("")}
+      </div>
+    `
+    : `<div class="tz-news"><h4>📰 相關產業新聞</h4><div class="tz-news-empty">今日無相關產業新聞</div></div>`;
+
+  bodyEl.innerHTML = `
+    <div class="tz-subtitle">${esc(ind.subtitle)}</div>
+    ${summaryHtml}
+    ${companiesHtml}
+    ${newsHtml}
+  `;
+
+  // Pill click switching
+  pillsEl.querySelectorAll(".tz-pill").forEach(btn => {
+    btn.addEventListener("click", () => {
+      STATE.techZoneActive = btn.dataset.ind;
+      renderTechZone();
+    });
+  });
 }
 
 // ====================== Signals (technical alerts) ======================

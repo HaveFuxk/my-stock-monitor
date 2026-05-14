@@ -669,11 +669,12 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     # 6) Export K 線 JSON 給 chart.html 用
     kline_manifest = _export_kline_json(report_df, market_id=market_id)
 
-    # 7) Wave 2/3/4/5：總體籌碼 + 新聞 + 主動 ETF 持股 + 產業地圖 + 歷史快照
+    # 7) Wave 2/3/4/5/6：總體籌碼 + 新聞 + 主動 ETF 持股 + 產業地圖 + 半導體/AI 科技業分析 + 歷史快照
     _build_macro_data()
     _build_news_data()
     _build_etf_data()
     _copy_industry_maps()
+    _build_tech_zone_data()  # Wave 6：依 industry_maps + manifest + news + etf 算出 dist/data/tech_zone.json
     snap_count = _snapshot_today_manifest()
     _write_cloudflare_routes()
     _write_sitemap()
@@ -743,6 +744,161 @@ def _copy_industry_maps():
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
     print(f"✅ [industry_maps] 拷貝 {src} → {dst}")
+
+
+def _build_tech_zone_data():
+    """產出 dist/data/tech_zone.json 給首頁「半導體 / AI 科技業分析」區塊用。
+
+    對 industry_maps.json 的每個 industry，跨參考 manifest（年/月/週漲幅）+
+    news.json（同產業相關新聞篇數）+ etf.json（主動 ETF 對該檔買賣傾向），
+    產出每個產業的：
+      - 重點公司清單（依年漲幅排序）
+      - 平均 / 中位數年漲幅
+      - 該產業今日相關新聞篇數
+      - 該產業內被主動 ETF 加碼 / 減碼的家數
+
+    容錯：依賴檔（manifest / industry_maps）任一缺失就 skip；news / etf 缺失則
+    對應欄位填 0。
+    """
+    out_path = DIST_DIR / "data" / "tech_zone.json"
+    manifest_path = DIST_DIR / "data" / "manifest.json"
+    imap_path = Path("config") / "industry_maps.json"
+
+    if not manifest_path.exists() or not imap_path.exists():
+        print(f"⚠️ [tech_zone] 依賴檔缺失（manifest 或 industry_maps），跳過")
+        return
+
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        imap = json.loads(imap_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"⚠️ [tech_zone] 依賴檔讀取失敗: {e}")
+        return
+
+    # ticker → manifest entry
+    by_ticker: dict[str, dict] = {x["ticker"]: x for x in manifest if x.get("ticker")}
+    # 4-碼 code → 完整 ticker（.TW 優先）
+    code_to_full: dict[str, str] = {}
+    for x in manifest:
+        t = x.get("ticker", "")
+        if not t:
+            continue
+        c = t.split(".")[0]
+        if c not in code_to_full or t.endswith(".TW"):
+            code_to_full[c] = t
+
+    # news.industry_tags 篩同產業文章
+    news_path = DIST_DIR / "data" / "news.json"
+    news_by_industry: dict[str, list[dict]] = {}
+    if news_path.exists():
+        try:
+            news = json.loads(news_path.read_text(encoding="utf-8"))
+            for it in news.get("items", []):
+                for tag in (it.get("industry_tags") or []):
+                    news_by_industry.setdefault(tag, []).append({
+                        "title": it.get("title", ""),
+                        "source": it.get("source", ""),
+                        "link": it.get("link", ""),
+                        "published_at": it.get("published_at", ""),
+                    })
+        except Exception as e:
+            print(f"⚠️ [tech_zone] news.json 讀取失敗，相關新聞會為 0: {e}")
+
+    # etf.json buy_rank / sell_rank → 主動 ETF 對該檔的傾向
+    etf_path = DIST_DIR / "data" / "etf.json"
+    etf_signal: dict[str, int] = {}  # ticker → net signal (+ = 加碼家數, - = 減碼)
+    if etf_path.exists():
+        try:
+            etf = json.loads(etf_path.read_text(encoding="utf-8"))
+            agg = (etf or {}).get("aggregated") or {}
+            for r in (agg.get("buy_rank") or []):
+                tk = r.get("stock_ticker")
+                if tk:
+                    etf_signal[tk] = etf_signal.get(tk, 0) + int(r.get("etf_count", 1) or 1)
+            for r in (agg.get("sell_rank") or []):
+                tk = r.get("stock_ticker")
+                if tk:
+                    etf_signal[tk] = etf_signal.get(tk, 0) - int(r.get("etf_count", 1) or 1)
+        except Exception as e:
+            print(f"⚠️ [tech_zone] etf.json 讀取失敗，ETF 訊號會為 0: {e}")
+
+    def _collect_members(ind: dict) -> set[str]:
+        """從 industry 物件抓所有成員 4-碼 code（支援 layers 與 flat companies 兩種結構）。"""
+        codes: set[str] = set()
+        for layer in (ind.get("layers") or []):
+            for role in (layer.get("roles") or []):
+                for c in (role.get("companies") or []):
+                    if c.get("ticker"):
+                        codes.add(c["ticker"])
+        for c in (ind.get("companies") or []):
+            if c.get("ticker"):
+                codes.add(c["ticker"])
+        return codes
+
+    industries_out = []
+    for ind in imap.get("industries", []):
+        codes = _collect_members(ind)
+        members = []
+        for code in sorted(codes):
+            full = code_to_full.get(code) or f"{code}.TW"
+            entry = by_ticker.get(full)
+            if not entry:
+                continue
+            etf_sig = etf_signal.get(full, 0)
+            members.append({
+                "ticker": full,
+                "name": entry.get("name") or "",
+                "year_high": entry.get("year_high"),
+                "month_high": entry.get("month_high"),
+                "week_high": entry.get("week_high"),
+                "safe_id": entry.get("safe_id"),
+                "etf_signal": etf_sig,
+                "has_info": entry.get("has_info", False),
+                "has_chips": entry.get("has_chips", False),
+            })
+
+        # 排序：依年漲幅遞減，None 排最後
+        members.sort(key=lambda x: x.get("year_high") if x.get("year_high") is not None else -1e9, reverse=True)
+        valid_yh = [m["year_high"] for m in members if m.get("year_high") is not None]
+        avg_yh = sum(valid_yh) / len(valid_yh) if valid_yh else None
+        valid_yh_sorted = sorted(valid_yh)
+        median_yh = (
+            valid_yh_sorted[len(valid_yh_sorted) // 2]
+            if valid_yh_sorted else None
+        )
+
+        related_news = news_by_industry.get(ind["id"], [])
+        # 取最多 5 篇做 inline preview，全篇還是要去 news.json 過濾
+        related_news_preview = related_news[:5]
+
+        industries_out.append({
+            "id": ind["id"],
+            "name": ind["name"],
+            "subtitle": ind.get("subtitle", ""),
+            "icon": ind.get("icon", "🔬"),
+            "structure": "layers" if ind.get("layers") else "flat",
+            "company_count_listed": len(codes),
+            "company_count_matched": len(members),
+            "avg_year_high": avg_yh,
+            "median_year_high": median_yh,
+            "top_companies": members[:10],
+            "all_companies": members,
+            "news_count": len(related_news),
+            "related_news": related_news_preview,
+            "etf_buy_count": sum(1 for m in members if m.get("etf_signal", 0) > 0),
+            "etf_sell_count": sum(1 for m in members if m.get("etf_signal", 0) < 0),
+        })
+
+    out = {
+        "generated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "version": imap.get("version", "?"),
+        "industries": industries_out,
+    }
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    summary = ", ".join(f"{i['id']}({i['company_count_matched']}/{i['company_count_listed']})" for i in industries_out)
+    print(f"✅ [tech_zone] 寫入 {out_path}，{len(industries_out)} 個產業 — {summary}")
 
 
 def _write_cloudflare_routes():
