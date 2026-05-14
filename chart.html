@@ -1007,6 +1007,7 @@ header {
         for (const ind of imRes.industries) {
           let here = false;
           const allInInd = new Set();
+          // 既有結構：layers > roles > companies（AI Server ODM 用）
           for (const layer of (ind.layers || [])) {
             for (const role of (layer.roles || [])) {
               for (const c of (role.companies || [])) {
@@ -1015,6 +1016,12 @@ header {
                 if (full === ticker || c.ticker === cleanCode) here = true;
               }
             }
+          }
+          // 新結構（v1.2 後）：扁平 companies（晶圓代工/IC設計/封測/散熱）
+          for (const c of (ind.companies || [])) {
+            const full = `${c.ticker}.TW`;
+            allInInd.add(full);
+            if (full === ticker || c.ticker === cleanCode) here = true;
           }
           if (here) {
             myIndustryIds.add(ind.id);
