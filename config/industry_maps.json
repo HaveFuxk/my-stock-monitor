@@ -1,7 +1,7 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "updated": "2026-05-14",
-  "description": "產業地圖 — 人類維護的產業內部結構配置檔。每個產業含上中下游 × 角色 × 公司。",
+  "description": "產業地圖 — 人類維護的產業內部結構配置檔。每個產業可用 layers（上中下游 × 角色 × 公司）或 companies（扁平列表）。tech_zone 區只看 companies/layers 合集，不分上中下游。",
   "tier_legend": {
     "leader":    { "label": "產業龍頭", "color": "green",  "dot": "●" },
     "niche":     { "label": "利基專精", "color": "blue",   "dot": "●" },
@@ -95,6 +95,94 @@
             }
           ]
         }
+      ]
+    },
+    {
+      "id": "semi-foundry",
+      "name": "晶圓代工",
+      "subtitle": "邏輯晶片製造、先進製程與成熟製程",
+      "icon": "🏭",
+      "keywords": [
+        "晶圓代工", "晶圓廠", "代工廠", "TSMC", "台積電", "UMC", "聯電",
+        "7nm", "5nm", "3nm", "2nm", "A16", "FinFET", "GAA",
+        "製程", "節點", "先進製程", "成熟製程", "矽晶圓",
+        "8 吋廠", "12 吋廠", "Fab", "晶圓出貨"
+      ],
+      "companies": [
+        { "ticker": "2330", "name": "台積電", "tier": "leader", "relevance": "high" },
+        { "ticker": "2303", "name": "聯電", "tier": "leader", "relevance": "high" },
+        { "ticker": "5347", "name": "世界先進", "tier": "niche", "relevance": "medium" },
+        { "ticker": "6770", "name": "力積電", "tier": "challenge", "relevance": "medium" }
+      ]
+    },
+    {
+      "id": "ic-design",
+      "name": "IC 設計",
+      "subtitle": "無晶圓 IC 設計、消費 / 通訊 / AI 晶片",
+      "icon": "🧠",
+      "keywords": [
+        "IC 設計", "IC設計", "無晶圓", "fabless",
+        "聯發科", "MediaTek", "Dimensity",
+        "聯詠", "Novatek", "瑞昱", "Realtek",
+        "信驊", "Aspeed", "BMC",
+        "祥碩", "ASMedia", "USB", "PCIe",
+        "晶心科", "Andes", "RISC-V",
+        "創意", "世芯", "群聯", "Phison",
+        "SoC", "FPGA", "EDA"
+      ],
+      "companies": [
+        { "ticker": "2454", "name": "聯發科", "tier": "leader", "relevance": "high" },
+        { "ticker": "3034", "name": "聯詠", "tier": "leader", "relevance": "high" },
+        { "ticker": "2379", "name": "瑞昱", "tier": "leader", "relevance": "high" },
+        { "ticker": "5274", "name": "信驊", "tier": "niche", "relevance": "high" },
+        { "ticker": "5269", "name": "祥碩", "tier": "niche", "relevance": "medium" },
+        { "ticker": "6533", "name": "晶心科", "tier": "challenge", "relevance": "medium" },
+        { "ticker": "8299", "name": "群聯", "tier": "niche", "relevance": "medium" }
+      ]
+    },
+    {
+      "id": "semi-package",
+      "name": "封測 / IC 載板",
+      "subtitle": "先進封裝、IC 載板、測試代工",
+      "icon": "📦",
+      "keywords": [
+        "封測", "封裝", "後段製程",
+        "日月光", "ASE", "京元電", "矽品",
+        "IC 載板", "ABF 載板", "ABF substrate", "BT 載板", "CCL",
+        "欣興", "南電", "景碩",
+        "CoWoS", "InFO", "SoIC", "扇出型封裝", "Fan-out", "3D 封裝",
+        "頎邦", "京元電",
+        "晶圓測試", "成品測試", "EOL"
+      ],
+      "companies": [
+        { "ticker": "3711", "name": "日月光投控", "tier": "leader", "relevance": "high" },
+        { "ticker": "3037", "name": "欣興", "tier": "leader", "relevance": "high" },
+        { "ticker": "6147", "name": "頎邦", "tier": "leader", "relevance": "high" },
+        { "ticker": "2449", "name": "京元電子", "tier": "leader", "relevance": "high" },
+        { "ticker": "8081", "name": "致新", "tier": "challenge", "relevance": "medium" },
+        { "ticker": "8016", "name": "矽創", "tier": "niche", "relevance": "medium" }
+      ]
+    },
+    {
+      "id": "optical-thermal",
+      "name": "散熱 / 光通訊",
+      "subtitle": "AI 伺服器散熱、光收發模組、矽光子",
+      "icon": "🌬️",
+      "keywords": [
+        "散熱", "液冷", "風扇", "均熱片", "熱導管", "Vapor Chamber", "VC", "3DVC",
+        "奇鋐", "超眾", "雙鴻", "建準", "建漢", "高力",
+        "光通訊", "光收發", "光模組", "AOC", "光纖", "矽光子", "silicon photonics", "CPO",
+        "華星光", "穩懋", "聯亞光電",
+        "DDR5", "HBM", "高頻寬記憶體",
+        "AI 散熱", "AI散熱", "資料中心散熱"
+      ],
+      "companies": [
+        { "ticker": "3017", "name": "奇鋐", "tier": "leader", "relevance": "high" },
+        { "ticker": "6230", "name": "超眾", "tier": "leader", "relevance": "high" },
+        { "ticker": "3324", "name": "雙鴻", "tier": "leader", "relevance": "high" },
+        { "ticker": "2492", "name": "華新科", "tier": "niche", "relevance": "medium" },
+        { "ticker": "4979", "name": "華星光", "tier": "niche", "relevance": "medium" },
+        { "ticker": "3105", "name": "穩懋", "tier": "niche", "relevance": "medium" }
       ]
     }
   ]
