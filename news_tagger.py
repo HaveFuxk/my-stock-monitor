@@ -4,9 +4,11 @@ news_tagger.py — 對 dist/data/news.json 的每篇文章標記提及的台股 
 
 工作原理：對每篇文章的 title + summary 做兩種匹配：
   1. 中文公司名匹配（從 manifest.json 取 name → ticker 對照，最長優先）
-     - 左側 guard：名稱前一個字若是中文 CJK 字元就拒絕（避免 鼎泰豐 → 泰豐、東南亞 → 南亞）
-     - 模糊名稱 AMBIGUOUS_NAMES：本身就是常見中文片語的名稱（泰豐、三星、全台、大成、南亞），
-       要求 ticker 4 碼數字「共現」才認定，否則 skip
+     - 一般名稱：純 substring 匹配（早期版本曾用「左側 CJK guard」拒絕「而台積電」「靠
+       台積電」這類前綴，但會漏掉正常連接詞，已改回 substring）
+     - 歧義名稱 AMBIGUOUS_NAMES：本身就是常見中文片語的名稱（泰豐、三星、全台、大成、
+       南亞、台塑、國泰、統一、中鋼...），要求 ticker 4 碼數字「共現」才認定，避免
+       鼎泰豐→2102 泰豐、Samsung 韓國→5007 三星科技、東南亞→1303 南亞 等假陽性
   2. 4 碼 ticker 匹配（過濾年份 1900-2099 後比對 manifest 內的 code）
 
 輸出：每篇 article 新增 mentioned_tickers: ["2330.TW", "2412.TW", ...]
@@ -25,27 +27,41 @@ if sys.platform == "win32":
         pass
 
 
-# 4 碼數字 + 可選大寫字母（00981A、2330、2412），不允許前後是更多數字或斜線
-# 避免比中 1234567 / 2026/01 等
-_NUMERIC_TICKER = re.compile(r'(?<![\d/])(\d{4}[A-Z]?)(?![\d])')
-
-# 中文 CJK 統一表意文字（用來判斷左側 guard）
-_CJK = re.compile(r'[一-鿿]')
+# 嚴格 ticker 格式：必須被括號/方括號/書名號包圍，或接 -TW / -US / -TWO / -HK 後綴。
+# 避免新聞裡的「8176 模式」「成交量3049.75億」「2030 年」這種裸 4 碼數字被誤判為 ticker。
+# 涵蓋格式：(2330) (2330-TW) [2330] 【2412】 2330-TW 2412-TWO 00981A-TW
+_NUMERIC_TICKER = re.compile(
+    r'(?:[\(\[【]|^|(?<=\s))'      # 左：( [ 【 行首 或空白
+    r'(\d{4}[A-Z]?)'                # 4 碼數字 + 可選字母
+    r'(?:[\)\]】]|-[A-Z]{2,3})'    # 右：) ] 】 或 -XX (-TW/-US/-TWO/-HK)
+)
 
 # 名稱本身就是常見中文片語，substring 容易誤匹（鼎泰豐 → 泰豐、三星電子 → 三星）
 # 這些名稱必須與其 4 碼 ticker code「共現」於文章才認定為提及。
-# 動態擴充規則：發現新的誤匹案例補進來即可。
+# 早期版本曾用「左側 CJK guard」（前一字若是中文就拒絕），但會誤殺正常連接詞前綴
+# 例如「而台積電」「靠台積電」「在英業達」，造成漏標。改用「白名單共現」策略：
+# 只有確認有歧義的名稱才走嚴格規則，其餘 2-char 名稱直接 substring。
 AMBIGUOUS_NAMES = {
-    # 常見飲食 / 連鎖店名片段
+    # 常見連鎖店名 / 飲食片段（鼎泰豐、全台 X、全國 X、永豐金、東森）
     "泰豐", "鼎豐", "全台", "全國", "永豐", "東森",
-    # 常見地理 / 名詞片段
+    # 常見地理 / 名詞片段（東南亞、南港、中央、中信、中華民國、東陽）
     "南亞", "南港", "中央", "中信", "中華", "北銘", "東陽",
-    # 通用片語
+    # 通用 2-字片語（大成功、達新、正豐、華新、華星、明星、光明）
     "大成", "達新", "正豐", "華新", "華星", "明星", "光明",
-    # Samsung 韓國的中文（會跟 5007 三星科技 撞）
+    # Samsung 韓國的中文會跟 5007 三星科技 撞
     "三星",
-    # 其他經常出現於通用文章的 2 字名
-    "彰銀", "金山",
+    # 銀行 / 金融常見前綴（彰化銀行、金山、國泰民安、富邦、大同小異）
+    "彰銀", "金山", "國泰", "富邦", "大同",
+    # 通用詞撞 ticker name（統一發票、聯華實業）
+    "統一", "聯華",
+    # 化學/塑膠常見前綴（台塑化、台肥、台聚）
+    "台塑", "台肥", "台聚",
+    # 中字頭通用前綴
+    "中鋼", "中保", "中興", "中租", "中橡",
+    # 時間/空間泛詞撞 ticker name（21 世紀、世紀合影、世界紀錄）
+    "世紀", "世界", "全球", "全民", "新世紀", "新世界",
+    # 精/精緻 常見泛詞（精金屬、精誠）
+    "精金", "精誠",
 }
 
 
@@ -57,18 +73,19 @@ def _is_likely_ticker(code: str) -> bool:
     return not (1900 <= n <= 2099)
 
 
-def _find_with_left_guard(text: str, name: str) -> list[int]:
-    """回傳 name 在 text 中所有「左側不是中文 CJK 字元」的起始 index。"""
+def _find_all(text: str, name: str) -> list[int]:
+    """回傳 name 在 text 中所有 substring 起始 index。
+
+    早期版本帶「左側 CJK guard」（前一字若中文就拒），但實測發現會誤殺
+    「而台積電 ADR」「靠台積電穩盤」這類正常中文連接詞前綴。改回單純 substring，
+    歧義名稱（鼎泰豐→泰豐、東南亞→南亞）由 AMBIGUOUS_NAMES + ticker code 共現
+    來把關。"""
     out = []
     pos = 0
     while True:
         idx = text.find(name, pos)
         if idx < 0:
             break
-        if idx > 0 and _CJK.match(text[idx - 1]):
-            # 鼎(CJK) + 泰豐 → 拒絕；位移 1 字繼續找
-            pos = idx + 1
-            continue
         out.append(idx)
         pos = idx + len(name)
     return out
@@ -112,7 +129,7 @@ def tag_mentions(items: list[dict], ticker_index: list[tuple[str, str]]) -> dict
 
         # Pass 1a: 一般名稱（左側 guard）
         for name, ticker in name_pairs_normal:
-            hits = _find_with_left_guard(scratch, name)
+            hits = _find_all(scratch, name)
             if hits:
                 mentioned.add(ticker)
                 # 把所有命中位置替成空白
@@ -128,7 +145,7 @@ def tag_mentions(items: list[dict], ticker_index: list[tuple[str, str]]) -> dict
             code = ticker.split(".")[0]
             if code not in codes_present:
                 continue
-            hits = _find_with_left_guard(scratch, name)
+            hits = _find_all(scratch, name)
             if hits:
                 mentioned.add(ticker)
                 buf = list(scratch)
