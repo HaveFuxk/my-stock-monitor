@@ -65,6 +65,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-etf-
 
+      # 7 天歷史快照：dist/data/snapshots/ 跨 run 累積；deploy 是 fresh dist
+      # 但這個目錄會在 build_web._snapshot_today_manifest() 寫入前先 restore，
+      # 讓 7 天前的 snapshot 不會被覆蓋。Audit 2026-05-14 發現 fix。
+      - name: Cache Snapshots
+        uses: actions/cache@v4
+        with:
+          path: dist/data/snapshots
+          key: ${{ runner.os }}-snapshots-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-snapshots-
+
       - name: Environment Setup
         run: |
           sudo apt-get update
