@@ -677,6 +677,7 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     snap_count = _snapshot_today_manifest()
     _write_cloudflare_routes()
     _write_sitemap()
+    _write_cache_headers()
 
     print("\n" + "=" * 60)
     print(f"🌐 [build_web] 靜態站已產出於 {DIST_DIR.resolve()}")
@@ -775,6 +776,34 @@ def _write_sitemap():
     )
     (DIST_DIR / "sitemap.xml").write_text(sitemap, encoding="utf-8")
     print(f"✅ [sitemap] 寫入 dist/sitemap.xml")
+
+
+def _write_cache_headers():
+    """寫 dist/_headers：對 /data/* /images/* 設長 cache TTL + stale-while-revalidate。
+
+    Audit v5 發現：Cloudflare Pages 預設 cache-control 是 max-age=0, must-revalidate，
+    每次訪問都要 round-trip。對「每日才更新一次」的 dashboard 過於 aggressive。
+    改進：
+      - /data/*.json：1 hr 直接 cache + 24 hr stale-while-revalidate（背景重抓）
+      - /images/*.png：同上
+      - /sitemap.xml：1 天 cache（很少變動）
+      - / 與 /chart：不動，仍走 HTML 即時 revalidate
+    """
+    headers = (
+        "# Cloudflare Pages _headers (audit v5 — 2026-05-14)\n"
+        "# 對 static data / images 設長 TTL + SWR，減少 repeat visitor round-trip。\n"
+        "\n"
+        "/data/*\n"
+        "  Cache-Control: public, max-age=3600, stale-while-revalidate=86400\n"
+        "\n"
+        "/images/*\n"
+        "  Cache-Control: public, max-age=3600, stale-while-revalidate=86400\n"
+        "\n"
+        "/sitemap.xml\n"
+        "  Cache-Control: public, max-age=86400\n"
+    )
+    (DIST_DIR / "_headers").write_text(headers, encoding="utf-8")
+    print(f"✅ [_headers] 寫入 dist/_headers（cache TTL）")
 
 
 def _snapshot_today_manifest() -> int:
