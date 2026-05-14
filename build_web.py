@@ -676,6 +676,7 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     _copy_industry_maps()
     snap_count = _snapshot_today_manifest()
     _write_cloudflare_routes()
+    _write_sitemap()
 
     print("\n" + "=" * 60)
     print(f"🌐 [build_web] 靜態站已產出於 {DIST_DIR.resolve()}")
@@ -754,6 +755,26 @@ def _write_cloudflare_routes():
     (DIST_DIR / "_redirects").write_text(redirects, encoding="utf-8")
     (DIST_DIR / "404.html").write_text(not_found_html, encoding="utf-8")
     print(f"✅ [_redirects] 寫入 dist/_redirects + dist/404.html")
+
+
+def _write_sitemap():
+    """寫 dist/sitemap.xml：列主要可索引路徑，協助搜尋引擎抓取。
+    audit v4 發現 /sitemap.xml 404。"""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    base = "https://my-stock-monitor.pages.dev"
+    paths = ["/", "/chart"]  # /chart 雖然 query-string driven，仍可被索引
+    urls = "\n  ".join(
+        f"<url><loc>{base}{p}</loc><lastmod>{today}</lastmod><changefreq>daily</changefreq></url>"
+        for p in paths
+    )
+    sitemap = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f'  {urls}\n'
+        '</urlset>\n'
+    )
+    (DIST_DIR / "sitemap.xml").write_text(sitemap, encoding="utf-8")
+    print(f"✅ [sitemap] 寫入 dist/sitemap.xml")
 
 
 def _snapshot_today_manifest() -> int:
