@@ -695,24 +695,41 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     print("=" * 60 + "\n")
 
 
-def _build_macro_data():
-    """跑 downloader_macro，寫 dist/data/macro.json。容錯：抓不到不擋 build。"""
+def _run_downloader(module_name: str, fn_name: str, label: str) -> None:
+    """跑單一 downloader 的單一 build_* 函式；失敗不擋整個 build pipeline。
+    pipeline 各 downloader 寫到不同 dist/data/*.json，互相獨立。"""
     try:
-        import downloader_macro
-        downloader_macro.build_macro_json()
+        mod = __import__(module_name)
+        getattr(mod, fn_name)()
     except Exception as e:
-        print(f"⚠️ [build_web] macro 抓取失敗（不影響其他資料）: {e}")
+        print(f"⚠️ [build_web] {label} 抓取失敗（不影響其他資料）: {e}")
+
+
+def _build_macro_data():
+    _run_downloader("downloader_macro", "build_macro_json", "macro")
+
+
+def _build_etf_data():
+    _run_downloader("downloader_etf", "build_etf_data", "etf")
+
+
+def _build_intl_data():
+    _run_downloader("downloader_intl", "build_intl_json", "intl")
+
+
+def _build_mops_data():
+    _run_downloader("downloader_mops", "build_mops_json", "mops")
+
+
+def _build_margin_stock_data():
+    _run_downloader("downloader_margin_stock", "build_margin_stock_json", "margin_stock")
 
 
 def _build_news_data():
-    """跑 downloader_news 寫 dist/data/news.json，再用 news_tagger 給每篇加
-    mentioned_tickers 與 industry_tags（供 chart.html 個股頁過濾「本檔／同產業」相關新聞）。
-    容錯：news 抓不到 → 不擋 build；tagger 失敗 → news.json 仍可用（但缺 tag 欄位）。"""
-    try:
-        import downloader_news
-        downloader_news.build_news_json()
-    except Exception as e:
-        print(f"⚠️ [build_web] news 抓取失敗（不影響其他資料）: {e}")
+    """news 比較特殊：抓完後還要跑 news_tagger 給每篇加 mentioned_tickers + industry_tags。
+    上游 fetch 失敗就不跑 tagger（避免 tagger 跑舊 cache 的 news.json 浪費）。"""
+    _run_downloader("downloader_news", "build_news_json", "news")
+    if not (DIST_DIR / "data" / "news.json").exists():
         return
     try:
         import news_tagger
@@ -723,43 +740,6 @@ def _build_news_data():
         )
     except Exception as e:
         print(f"⚠️ [build_web] news_tagger 失敗（news.json 仍可用，但缺 mentioned_tickers / industry_tags）: {e}")
-
-
-def _build_etf_data():
-    """跑 downloader_etf，寫 dist/data/etf.json + 累積 data/etf_holdings.db。
-    容錯：yfinance 抓不到不擋 build。"""
-    try:
-        import downloader_etf
-        downloader_etf.build_etf_data()
-    except Exception as e:
-        print(f"⚠️ [build_web] etf 抓取失敗（不影響其他資料）: {e}")
-
-
-def _build_intl_data():
-    """Wave 7 Tier 2 B4+B5：國際指數 + 全球競爭者。容錯：失敗不擋 build。"""
-    try:
-        import downloader_intl
-        downloader_intl.build_intl_json()
-    except Exception as e:
-        print(f"⚠️ [build_web] intl 抓取失敗（不影響其他資料）: {e}")
-
-
-def _build_mops_data():
-    """Wave 7 Tier 2 B1：月營收（MOPS openapi）。容錯：失敗不擋 build。"""
-    try:
-        import downloader_mops
-        downloader_mops.build_mops_json()
-    except Exception as e:
-        print(f"⚠️ [build_web] mops 抓取失敗（不影響其他資料）: {e}")
-
-
-def _build_margin_stock_data():
-    """Wave 7 Tier 2 B3：個股融資融券（TWSE openapi）。容錯：失敗不擋 build。"""
-    try:
-        import downloader_margin_stock
-        downloader_margin_stock.build_margin_stock_json()
-    except Exception as e:
-        print(f"⚠️ [build_web] margin_stock 抓取失敗（不影響其他資料）: {e}")
 
 
 def _copy_industry_maps():
@@ -805,18 +785,16 @@ def _build_tech_zone_data():
         print(f"⚠️ [tech_zone] 依賴檔讀取失敗: {e}")
         return
 
-    # Wave 7 Tier 2：讀新 3 個 data file 進 lookup dict（不存在則用空 dict）
-    def _try_load(path: Path, default):
-        if not path.exists():
-            return default
+    # Wave 7 Tier 2：讀新 2 個 data file 進 lookup dict（不存在則用空 dict）
+    def _try_load(path: Path) -> dict:
         try:
             return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            return default
+        except (OSError, json.JSONDecodeError):
+            return {}
 
-    mops_data = _try_load(DIST_DIR / "data" / "mops_revenue.json", {}).get("tech_zone", {})
-    mops_meta = _try_load(DIST_DIR / "data" / "mops_revenue.json", {})
-    margin_data = _try_load(DIST_DIR / "data" / "margin_stock.json", {}).get("tech_zone", {})
+    mops_full = _try_load(DIST_DIR / "data" / "mops_revenue.json")
+    mops_data = mops_full.get("tech_zone", {})
+    margin_data = _try_load(DIST_DIR / "data" / "margin_stock.json").get("tech_zone", {})
 
     # ticker → manifest entry
     by_ticker: dict[str, dict] = {x["ticker"]: x for x in manifest if x.get("ticker")}
@@ -1070,9 +1048,9 @@ def _build_tech_zone_data():
         "industries": industries_out,
         # Wave 7 Tier 2：月營收最新月份（給前端 header tag 用，例如「2026/04 月營收」）
         "mops_meta": {
-            "data_year_month": mops_meta.get("data_year_month"),
-            "data_year_month_display": mops_meta.get("data_year_month_display"),
-        } if mops_meta else None,
+            "data_year_month": mops_full.get("data_year_month"),
+            "data_year_month_display": mops_full.get("data_year_month_display"),
+        } if mops_full else None,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
