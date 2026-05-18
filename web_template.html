@@ -2556,7 +2556,7 @@ function renderTechZone() {
       { cls: ms ? pctCls(ms.avg_yoy) : "",
         sub: ms ? `${mopsMonthLabel || ""} · 中位 ${fmtPct(ms.median_yoy, 1)} · ${ms.members_with_data} 家` : null }),
     mkTile("📊 累計營收 YoY", ms && ms.avg_ytd_yoy != null ? fmtPct(ms.avg_ytd_yoy, 1) : null,
-      { cls: ms ? pctCls(ms.avg_ytd_yoy) : "" }),
+      { cls: (ms && ms.avg_ytd_yoy != null) ? pctCls(ms.avg_ytd_yoy) : "" }),
     mkTile("💳 融資餘額合計", mg ? `${(mg.margin_balance_total / 10000).toFixed(1)} 萬張` : null,
       { sub: mg ? `較昨 ${mg.margin_change_total >= 0 ? '+' : ''}${(mg.margin_change_total / 1000).toFixed(1)} 千張 · ${mg.members_with_data} 家` : null }),
   ].filter(Boolean);
