@@ -2704,7 +2704,9 @@ function renderTechZone() {
   };
   const ms = ind.mops_summary;
   const mg = ind.margin_summary;
+  const qs = ind.quarterly_summary;
   const mopsMonthLabel = data.mops_meta?.data_year_month_display;
+  const qLabel = data.quarterly_meta?.data_quarter_display;
   const tiles = [
     mkTile("💰 產業總市值", ind.market_cap_total ? fmtBigCap(ind.market_cap_total) : null),
     mkTile("📐 平均 PE", ind.avg_pe ? ind.avg_pe.toFixed(1) : null,
@@ -2725,6 +2727,14 @@ function renderTechZone() {
       { cls: (ms && ms.avg_ytd_yoy != null) ? pctCls(ms.avg_ytd_yoy) : "" }),
     mkTile("💳 融資餘額合計", mg ? `${(mg.margin_balance_total / 10000).toFixed(1)} 萬張` : null,
       { sub: mg ? `較昨 ${mg.margin_change_total >= 0 ? '+' : ''}${(mg.margin_change_total / 1000).toFixed(1)} 千張 · ${mg.members_with_data} 家` : null }),
+    // Wave 7 Tier 3 C3: 季財報 EPS + 營收 + 營業利益率
+    mkTile("📑 季 EPS 平均", qs?.avg_eps != null ? qs.avg_eps.toFixed(2) + " 元" : null,
+      { sub: qs ? `${qLabel || ""} · 中位 ${qs.median_eps?.toFixed(2) || "—"} · ${qs.members_with_data} 家` : null }),
+    mkTile("📑 季營收合計", qs?.total_revenue != null ? `${(qs.total_revenue / 100000).toFixed(0)} 億` : null,
+      { sub: qs ? `${qLabel || ""} · ${qs.members_with_data} 家` : null }),
+    mkTile("📑 平均營業利益率", qs?.avg_op_margin != null ? qs.avg_op_margin.toFixed(1) + "%" : null,
+      { cls: qs?.avg_op_margin != null ? (qs.avg_op_margin >= 30 ? "up" : (qs.avg_op_margin < 5 ? "down" : "")) : "",
+        sub: qs ? qLabel || "" : null }),
   ].filter(Boolean);
   const extrasHtml = tiles.length ? `<div class="tz-extras">${tiles.join("")}</div>` : "";
 
@@ -2743,9 +2753,13 @@ function renderTechZone() {
   const cards = (ind.top_companies || []).map(c => {
     const mopsYoy = c.mops?.yoy_pct;
     const marginBal = c.margin?.margin_balance;
+    const qEps = c.quarterly?.eps;
+    const qOpMargin = c.quarterly?.op_margin;
     const metaParts = [
       c.month_high != null ? metaRow("月", fmtPct(c.month_high, 0), pctCls(c.month_high)) : "",
+      qEps != null ? metaRow("Q EPS", qEps.toFixed(2), qEps >= 0 ? "up" : "down") : "",
       mopsYoy != null ? metaRow("營收YoY", fmtPct(mopsYoy, 0), pctCls(mopsYoy)) : "",
+      qOpMargin != null ? metaRow("營益率", qOpMargin.toFixed(0) + "%", qOpMargin >= 20 ? "up" : (qOpMargin < 5 ? "down" : "")) : "",
       c.market_cap ? metaRow("市值", fmtBigCap(c.market_cap)) : "",
       (c.trailing_pe && c.trailing_pe < 500) ? metaRow("PE", c.trailing_pe.toFixed(1)) : "",
       marginBal ? metaRow("融資", `${(marginBal / 1000).toFixed(1)}K`) : "",
