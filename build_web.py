@@ -669,12 +669,15 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     # 6) Export K 線 JSON 給 chart.html 用
     kline_manifest = _export_kline_json(report_df, market_id=market_id)
 
-    # 7) Wave 2/3/4/5/6：總體籌碼 + 新聞 + 主動 ETF 持股 + 產業地圖 + 半導體/AI 科技業分析 + 歷史快照
+    # 7) Wave 2/3/4/5/6/7：總體籌碼 + 新聞 + 主動 ETF 持股 + 產業地圖 + 半導體/AI 科技業分析 + Tier 2 新爬資料 + 歷史快照
     _build_macro_data()
     _build_news_data()
     _build_etf_data()
     _copy_industry_maps()
-    _build_tech_zone_data()  # Wave 6：依 industry_maps + manifest + news + etf 算出 dist/data/tech_zone.json
+    _build_intl_data()        # Wave 7 Tier 2 B4+B5：國際指數 + 全球競爭者
+    _build_mops_data()        # Wave 7 Tier 2 B1：月營收（MOPS openapi）
+    _build_margin_stock_data() # Wave 7 Tier 2 B3：個股融資融券
+    _build_tech_zone_data()   # 必須在以上 4 個 data 寫完後，才能 merge 進 tech_zone.json
     snap_count = _snapshot_today_manifest()
     _write_cloudflare_routes()
     _write_sitemap()
@@ -732,6 +735,33 @@ def _build_etf_data():
         print(f"⚠️ [build_web] etf 抓取失敗（不影響其他資料）: {e}")
 
 
+def _build_intl_data():
+    """Wave 7 Tier 2 B4+B5：國際指數 + 全球競爭者。容錯：失敗不擋 build。"""
+    try:
+        import downloader_intl
+        downloader_intl.build_intl_json()
+    except Exception as e:
+        print(f"⚠️ [build_web] intl 抓取失敗（不影響其他資料）: {e}")
+
+
+def _build_mops_data():
+    """Wave 7 Tier 2 B1：月營收（MOPS openapi）。容錯：失敗不擋 build。"""
+    try:
+        import downloader_mops
+        downloader_mops.build_mops_json()
+    except Exception as e:
+        print(f"⚠️ [build_web] mops 抓取失敗（不影響其他資料）: {e}")
+
+
+def _build_margin_stock_data():
+    """Wave 7 Tier 2 B3：個股融資融券（TWSE openapi）。容錯：失敗不擋 build。"""
+    try:
+        import downloader_margin_stock
+        downloader_margin_stock.build_margin_stock_json()
+    except Exception as e:
+        print(f"⚠️ [build_web] margin_stock 抓取失敗（不影響其他資料）: {e}")
+
+
 def _copy_industry_maps():
     """把 git-tracked 的 config/industry_maps.json 拷到 dist/data/industry_maps.json
     給前端 fetch。資料源放在 config/ 而非 data/（data/ 在 .gitignore 內，是 build 產物目錄）。
@@ -774,6 +804,19 @@ def _build_tech_zone_data():
     except Exception as e:
         print(f"⚠️ [tech_zone] 依賴檔讀取失敗: {e}")
         return
+
+    # Wave 7 Tier 2：讀新 3 個 data file 進 lookup dict（不存在則用空 dict）
+    def _try_load(path: Path, default):
+        if not path.exists():
+            return default
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return default
+
+    mops_data = _try_load(DIST_DIR / "data" / "mops_revenue.json", {}).get("tech_zone", {})
+    mops_meta = _try_load(DIST_DIR / "data" / "mops_revenue.json", {})
+    margin_data = _try_load(DIST_DIR / "data" / "margin_stock.json", {}).get("tech_zone", {})
 
     # ticker → manifest entry
     by_ticker: dict[str, dict] = {x["ticker"]: x for x in manifest if x.get("ticker")}
@@ -861,6 +904,9 @@ def _build_tech_zone_data():
             "fifty_two_week_high": info.get("fiftyTwoWeekHigh"),
             "long_name": info.get("longName"),
             "chips_60d": chips_sum,
+            # Wave 7 Tier 2 B2：法人持股比例（yfinance.info 提供，可能 None）
+            "held_pct_institutions": info.get("heldPercentInstitutions"),
+            "held_pct_insiders": info.get("heldPercentInsiders"),
         }
         enrich_cache[ticker] = out_member
         return out_member
@@ -928,6 +974,12 @@ def _build_tech_zone_data():
                 "dividend_yield": enrich.get("dividend_yield"),
                 "fifty_two_week_high": enrich.get("fifty_two_week_high"),
                 "chips_60d": enrich.get("chips_60d"),
+                # Wave 7 Tier 2 B2：法人持股
+                "held_pct_institutions": enrich.get("held_pct_institutions"),
+                # Wave 7 Tier 2 B1：月營收（YoY/MoM/累計 YoY）
+                "mops": mops_data.get(code),
+                # Wave 7 Tier 2 B3：融資融券
+                "margin": margin_data.get(code),
             })
 
         members.sort(key=lambda x: x.get("year_high") if x.get("year_high") is not None else -1e9, reverse=True)
@@ -949,6 +1001,29 @@ def _build_tech_zone_data():
                 "trust_net": sum(c["trust_net"] for c in chips_data),
                 "dealer_net": sum(c["dealer_net"] for c in chips_data),
                 "total_net": sum(c["total_net"] for c in chips_data),
+            }
+
+        # Wave 7 Tier 2 B1：產業層級月營收 aggregates（YoY 平均 + 累計 YoY 平均）
+        mops_yoy = [m["mops"]["yoy_pct"] for m in members if m.get("mops") and m["mops"].get("yoy_pct") is not None]
+        mops_ytd_yoy = [m["mops"]["ytd_yoy_pct"] for m in members if m.get("mops") and m["mops"].get("ytd_yoy_pct") is not None]
+        mops_summary = None
+        if mops_yoy:
+            mops_summary = {
+                "members_with_data": len(mops_yoy),
+                "avg_yoy": sum(mops_yoy) / len(mops_yoy),
+                "median_yoy": sorted(mops_yoy)[len(mops_yoy) // 2],
+                "avg_ytd_yoy": (sum(mops_ytd_yoy) / len(mops_ytd_yoy)) if mops_ytd_yoy else None,
+            }
+
+        # Wave 7 Tier 2 B3：產業層級融資餘額合計（張數）
+        margin_data_list = [m["margin"] for m in members if m.get("margin")]
+        margin_summary = None
+        if margin_data_list:
+            margin_summary = {
+                "members_with_data": len(margin_data_list),
+                "margin_balance_total": sum((d["margin_balance"] or 0) for d in margin_data_list),
+                "margin_change_total": sum(((d["margin_balance"] or 0) - (d["margin_prev"] or 0)) for d in margin_data_list),
+                "short_balance_total": sum((d["short_balance"] or 0) for d in margin_data_list),
             }
 
         related_news = news_by_industry.get(ind["id"], [])
@@ -978,6 +1053,9 @@ def _build_tech_zone_data():
             "avg_dividend_yield": (sum(dys) / len(dys)) if dys else None,
             "div_sample_count": len(dys),
             "chips_60d_total": chips_60d_total,
+            # Wave 7 Tier 2：月營收 + 融資融券 industry-level summary
+            "mops_summary": mops_summary,
+            "margin_summary": margin_summary,
             "top_companies": members[:10],
             "news_count": len(related_news),
             "related_news": related_news[:5],
@@ -990,6 +1068,11 @@ def _build_tech_zone_data():
         "version": imap.get("version", "?"),
         "market_benchmark": market_benchmark,
         "industries": industries_out,
+        # Wave 7 Tier 2：月營收最新月份（給前端 header tag 用，例如「2026/04 月營收」）
+        "mops_meta": {
+            "data_year_month": mops_meta.get("data_year_month"),
+            "data_year_month_display": mops_meta.get("data_year_month_display"),
+        } if mops_meta else None,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
