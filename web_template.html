@@ -1592,6 +1592,7 @@ const STATE = {
   techZone: null,           // { industries: [{id, name, top_companies:[...], avg_year_high, ...}] }
   techZoneActive: null,     // 目前選中的子產業 id（pill 切換）
   techZoneClickBound: false, // 確保 event delegation 只綁一次
+  intl: null,               // { indices: [...], competitors_by_industry: {id: [...]} } 國際指數 + 全球競爭者
   strong: { market: "all", period: "week_x" },
   chips: { who: "foreign", days: 10 },
   heat: { period: "month_high" },
@@ -1649,7 +1650,7 @@ async function fetchJson(url, fallback = null) {
 
 async function loadAll() {
   // 7 個 endpoint 並行 fetch，個別失敗不擋住其他 section render
-  const [manifest, news, macro, etf, industryMaps, snapshots, techZone] = await Promise.all([
+  const [manifest, news, macro, etf, industryMaps, snapshots, techZone, intl] = await Promise.all([
     fetchJson("data/manifest.json", null),
     fetchJson("data/news.json", { items: [] }),
     fetchJson("data/macro.json", null),
@@ -1657,6 +1658,7 @@ async function loadAll() {
     fetchJson("data/industry_maps.json", null),
     fetchJson("data/snapshots/index.json", null),
     fetchJson("data/tech_zone.json", null),
+    fetchJson("data/intl.json", null),
   ]);
 
   if (!manifest) {
@@ -1672,6 +1674,7 @@ async function loadAll() {
   STATE.industryMaps = industryMaps;
   STATE.snapshots = snapshots;
   STATE.techZone = techZone;
+  STATE.intl = intl;
 
   renderAll();
 }
@@ -2428,18 +2431,20 @@ function renderTechZone() {
     .map(x => ({ ...x, _yh: x.avg_year_high || 0 }))
     .sort((a, b) => b._yh - a._yh);
   const maxYh = Math.max(1, ...ranked.map(x => Math.abs(x._yh)));
+  const mopsMonth = data.mops_meta?.data_year_month_display || "";
   const compareHtml = `
     <div class="tz-compare">
-      <h4>📊 5 個產業強弱對比（依平均年漲幅排序）</h4>
+      <h4>📊 5 個產業強弱對比（依平均年漲幅排序）${mopsMonth ? ` · 月營收 ${mopsMonth}` : ""}</h4>
       <table class="tz-compare-table">
         <thead>
           <tr>
             <th>產業</th>
             <th>平均年漲</th>
             <th>平均月漲</th>
-            <th>平均週漲</th>
+            <th>月營收 YoY</th>
             <th>總市值</th>
             <th>60 日外資</th>
+            <th>融資餘額</th>
             <th>主動 ETF</th>
           </tr>
         </thead>
@@ -2450,14 +2455,20 @@ function renderTechZone() {
             const ch = x.chips_60d_total;
             const foreignTxt = ch ? fmtLot(ch.foreign_net) : "—";
             const foreignCls = ch ? pctCls(ch.foreign_net) : "";
+            const ms = x.mops_summary;
+            const mopsTxt = ms ? fmtPct(ms.avg_yoy, 1) : "—";
+            const mopsCls = ms ? pctCls(ms.avg_yoy) : "";
+            const mg = x.margin_summary;
+            const marginTxt = mg ? `${(mg.margin_balance_total / 10000).toFixed(1)} 萬張` : "—";
             return `
               <tr class="${isActive ? 'active' : ''}" data-ind="${esc(x.id)}">
                 <td>${x.icon || '🔬'} ${esc(x.name)} <span style="color:var(--muted);font-weight:normal">×${x.company_count_matched}</span></td>
                 <td><span class="tz-cmp-bar" style="width:${barW}px"></span><span class="${pctCls(x.avg_year_high)}">${fmtPct(x.avg_year_high, 0)}</span></td>
                 <td class="${pctCls(x.avg_month_high)}">${fmtPct(x.avg_month_high, 1)}</td>
-                <td class="${pctCls(x.avg_week_high)}">${fmtPct(x.avg_week_high, 1)}</td>
+                <td class="${mopsCls}">${mopsTxt}</td>
                 <td>${fmtBigCap(x.market_cap_total)}</td>
                 <td class="${foreignCls}">${foreignTxt}</td>
+                <td>${marginTxt}</td>
                 <td><span class="up">+${x.etf_buy_count}</span> <span style="color:var(--muted)">/</span> <span class="down">-${x.etf_sell_count}</span></td>
               </tr>
             `;
@@ -2525,6 +2536,9 @@ function renderTechZone() {
       </div>
     `;
   };
+  const ms = ind.mops_summary;
+  const mg = ind.margin_summary;
+  const mopsMonthLabel = data.mops_meta?.data_year_month_display;
   const tiles = [
     mkTile("💰 產業總市值", ind.market_cap_total ? fmtBigCap(ind.market_cap_total) : null),
     mkTile("📐 平均 PE", ind.avg_pe ? ind.avg_pe.toFixed(1) : null,
@@ -2537,6 +2551,14 @@ function renderTechZone() {
       { cls: chips ? pctCls(chips.foreign_net) : "", sub: chips ? `${chips.members_with_data}/${ind.company_count_matched} 家有資料` : null }),
     mkTile("🏦 60日投信淨買超", chips ? fmtLot(chips.trust_net) : null,
       { cls: chips ? pctCls(chips.trust_net) : "" }),
+    // Wave 7 Tier 2: 月營收 + 融資餘額
+    mkTile("📈 月營收 YoY 平均", ms ? fmtPct(ms.avg_yoy, 1) : null,
+      { cls: ms ? pctCls(ms.avg_yoy) : "",
+        sub: ms ? `${mopsMonthLabel || ""} · 中位 ${fmtPct(ms.median_yoy, 1)} · ${ms.members_with_data} 家` : null }),
+    mkTile("📊 累計營收 YoY", ms && ms.avg_ytd_yoy != null ? fmtPct(ms.avg_ytd_yoy, 1) : null,
+      { cls: ms ? pctCls(ms.avg_ytd_yoy) : "" }),
+    mkTile("💳 融資餘額合計", mg ? `${(mg.margin_balance_total / 10000).toFixed(1)} 萬張` : null,
+      { sub: mg ? `較昨 ${mg.margin_change_total >= 0 ? '+' : ''}${(mg.margin_change_total / 1000).toFixed(1)} 千張 · ${mg.members_with_data} 家` : null }),
   ].filter(Boolean);
   const extrasHtml = tiles.length ? `<div class="tz-extras">${tiles.join("")}</div>` : "";
 
@@ -2553,10 +2575,14 @@ function renderTechZone() {
     `<span class="tz-meta-row"><span class="tz-meta-label">${label}</span><span class="tz-meta-value ${valueCls}">${value}</span></span>`;
 
   const cards = (ind.top_companies || []).map(c => {
+    const mopsYoy = c.mops?.yoy_pct;
+    const marginBal = c.margin?.margin_balance;
     const metaParts = [
       c.month_high != null ? metaRow("月", fmtPct(c.month_high, 0), pctCls(c.month_high)) : "",
+      mopsYoy != null ? metaRow("營收YoY", fmtPct(mopsYoy, 0), pctCls(mopsYoy)) : "",
       c.market_cap ? metaRow("市值", fmtBigCap(c.market_cap)) : "",
       (c.trailing_pe && c.trailing_pe < 500) ? metaRow("PE", c.trailing_pe.toFixed(1)) : "",
+      marginBal ? metaRow("融資", `${(marginBal / 1000).toFixed(1)}K`) : "",
     ].filter(Boolean);
     const metaHtml = metaParts.length ? `<div class="tz-company-meta">${metaParts.join("")}</div>` : "";
     const etfList = (c.etf_buy_holders || []).slice(0, 5);
@@ -2594,6 +2620,49 @@ function renderTechZone() {
     `
     : `<div class="tz-news"><h4>📰 相關產業新聞</h4><div class="tz-news-empty">今日無相關產業新聞</div></div>`;
 
+  // ============ 國際指數 + 全球競爭者（讀 STATE.intl）============
+  const intl = STATE.intl;
+  let intlHtml = "";
+  if (intl) {
+    const idxRows = (intl.indices || []).map(i => `
+      <tr>
+        <td>${esc(i.label)} <span style="color:var(--muted);font-size:0.7rem">${esc(i.ticker)}</span></td>
+        <td class="${pctCls(i.year_change)}">${fmtPct(i.year_change, 1)}</td>
+        <td class="${pctCls(i.month_change)}">${fmtPct(i.month_change, 1)}</td>
+        <td class="${pctCls(i.week_change)}">${fmtPct(i.week_change, 1)}</td>
+        <td class="${pctCls(i.day_change)}">${fmtPct(i.day_change, 2)}</td>
+      </tr>
+    `).join("");
+    const competitors = (intl.competitors_by_industry || {})[ind.id] || [];
+    const compRows = competitors.map(c => `
+      <tr>
+        <td>${esc(c.label)} <span style="color:var(--muted);font-size:0.7rem">${esc(c.ticker)}</span></td>
+        <td class="${pctCls(c.year_change)}">${fmtPct(c.year_change, 1)}</td>
+        <td class="${pctCls(c.month_change)}">${fmtPct(c.month_change, 1)}</td>
+        <td>${c.market_cap_usd ? "$" + fmtBigCap(c.market_cap_usd).replace(" ", "") : "—"}</td>
+        <td><span style="color:var(--muted);font-size:0.72rem">${esc(c.currency || "USD")}</span></td>
+      </tr>
+    `).join("");
+    intlHtml = `
+      <div class="tz-compare" style="margin-top:1rem;">
+        <h4>🌍 國際科技股指數對比</h4>
+        <table class="tz-compare-table">
+          <thead><tr><th>指數</th><th>年</th><th>月</th><th>週</th><th>日</th></tr></thead>
+          <tbody>${idxRows}</tbody>
+        </table>
+      </div>
+      ${competitors.length ? `
+        <div class="tz-compare" style="margin-top:0.75rem;">
+          <h4>🏢 ${esc(ind.name)} — 全球競爭者</h4>
+          <table class="tz-compare-table">
+            <thead><tr><th>公司</th><th>年</th><th>月</th><th>市值</th><th>幣</th></tr></thead>
+            <tbody>${compRows}</tbody>
+          </table>
+        </div>
+      ` : ""}
+    `;
+  }
+
   bodyEl.innerHTML = `
     ${compareHtml}
     <div class="tz-subtitle">${esc(ind.subtitle)}</div>
@@ -2601,6 +2670,7 @@ function renderTechZone() {
     ${extrasHtml}
     ${companiesHtml}
     ${newsHtml}
+    ${intlHtml}
   `;
 
   // 統一 click handler — pill 與 compare table row 都用 data-ind，
