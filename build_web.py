@@ -676,8 +676,9 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     _copy_industry_maps()
     _build_intl_data()        # Wave 7 Tier 2 B4+B5：國際指數 + 全球競爭者
     _build_mops_data()        # Wave 7 Tier 2 B1：月營收（MOPS openapi）
+    _build_mops_quarterly_data() # Wave 7 Tier 3 C3：季財報 EPS + 損益（MOPS openapi）
     _build_margin_stock_data() # Wave 7 Tier 2 B3：個股融資融券
-    _build_tech_zone_data()   # 必須在以上 4 個 data 寫完後，才能 merge 進 tech_zone.json
+    _build_tech_zone_data()   # 必須在以上 5 個 data 寫完後，才能 merge 進 tech_zone.json
     _build_tech_history_data() # Wave 7 Tier 3 C4+C1：產業歷史走勢 + 輪動（需 per-stock candles 已寫）
     snap_count = _snapshot_today_manifest()
     _write_cloudflare_routes()
@@ -720,6 +721,10 @@ def _build_intl_data():
 
 def _build_mops_data():
     _run_downloader("downloader_mops", "build_mops_json", "mops")
+
+
+def _build_mops_quarterly_data():
+    _run_downloader("downloader_mops_quarterly", "build_mops_quarterly_json", "mops_quarterly")
 
 
 def _build_margin_stock_data():
@@ -800,6 +805,9 @@ def _build_tech_zone_data():
     mops_full = _try_load(DIST_DIR / "data" / "mops_revenue.json")
     mops_data = mops_full.get("tech_zone", {})
     margin_data = _try_load(DIST_DIR / "data" / "margin_stock.json").get("tech_zone", {})
+    # Wave 7 Tier 3 C3：季財報 EPS + 損益
+    q_full = _try_load(DIST_DIR / "data" / "mops_quarterly.json")
+    q_data = q_full.get("tech_zone", {})
 
     # ticker → manifest entry
     by_ticker: dict[str, dict] = {x["ticker"]: x for x in manifest if x.get("ticker")}
@@ -963,6 +971,8 @@ def _build_tech_zone_data():
                 "mops": mops_data.get(code),
                 # Wave 7 Tier 2 B3：融資融券
                 "margin": margin_data.get(code),
+                # Wave 7 Tier 3 C3：最新季財報（EPS / 營收 / 營業利益率）
+                "quarterly": q_data.get(code),
             })
 
         members.sort(key=lambda x: x.get("year_high") if x.get("year_high") is not None else -1e9, reverse=True)
@@ -996,6 +1006,21 @@ def _build_tech_zone_data():
                 "avg_yoy": sum(mops_yoy) / len(mops_yoy),
                 "median_yoy": sorted(mops_yoy)[len(mops_yoy) // 2],
                 "avg_ytd_yoy": (sum(mops_ytd_yoy) / len(mops_ytd_yoy)) if mops_ytd_yoy else None,
+            }
+
+        # Wave 7 Tier 3 C3：產業層級最新季財報 aggregates
+        q_list = [m["quarterly"] for m in members if m.get("quarterly")]
+        quarterly_summary = None
+        if q_list:
+            eps_vals = [q["eps"] for q in q_list if q.get("eps") is not None]
+            op_margins = [q["op_margin"] for q in q_list if q.get("op_margin") is not None]
+            revenues = [q["revenue"] for q in q_list if q.get("revenue") is not None]
+            quarterly_summary = {
+                "members_with_data": len(q_list),
+                "avg_eps": (sum(eps_vals) / len(eps_vals)) if eps_vals else None,
+                "median_eps": sorted(eps_vals)[len(eps_vals) // 2] if eps_vals else None,
+                "total_revenue": sum(revenues) if revenues else None,  # 千元
+                "avg_op_margin": (sum(op_margins) / len(op_margins)) if op_margins else None,  # %
             }
 
         # Wave 7 Tier 2 B3：產業層級融資餘額合計（張數）
@@ -1039,6 +1064,8 @@ def _build_tech_zone_data():
             # Wave 7 Tier 2：月營收 + 融資融券 industry-level summary
             "mops_summary": mops_summary,
             "margin_summary": margin_summary,
+            # Wave 7 Tier 3 C3：最新季財報 industry-level summary
+            "quarterly_summary": quarterly_summary,
             "top_companies": members[:10],
             "news_count": len(related_news),
             "related_news": related_news[:5],
@@ -1056,6 +1083,12 @@ def _build_tech_zone_data():
             "data_year_month": mops_full.get("data_year_month"),
             "data_year_month_display": mops_full.get("data_year_month_display"),
         } if mops_full else None,
+        # Wave 7 Tier 3 C3：季財報最新季別（例如「2026 Q1」）
+        "quarterly_meta": {
+            "data_year": q_full.get("data_year"),
+            "data_quarter": q_full.get("data_quarter"),
+            "data_quarter_display": q_full.get("data_quarter_display"),
+        } if q_full else None,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
