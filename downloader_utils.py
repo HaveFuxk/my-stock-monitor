@@ -12,7 +12,8 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-INDUSTRY_MAPS_FILE = Path("config") / "industry_maps.json"
+# 絕對路徑：相對於本檔（repo root），讓 callers 從任何 cwd import 都能正確找到。
+INDUSTRY_MAPS_FILE = Path(__file__).resolve().parent / "config" / "industry_maps.json"
 
 
 def init_stdout():
