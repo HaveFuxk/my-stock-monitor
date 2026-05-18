@@ -678,6 +678,7 @@ def build(images, report_df=None, text_reports=None, market_id="tw-share", sampl
     _build_mops_data()        # Wave 7 Tier 2 B1：月營收（MOPS openapi）
     _build_margin_stock_data() # Wave 7 Tier 2 B3：個股融資融券
     _build_tech_zone_data()   # 必須在以上 4 個 data 寫完後，才能 merge 進 tech_zone.json
+    _build_tech_history_data() # Wave 7 Tier 3 C4+C1：產業歷史走勢 + 輪動（需 per-stock candles 已寫）
     snap_count = _snapshot_today_manifest()
     _write_cloudflare_routes()
     _write_sitemap()
@@ -723,6 +724,10 @@ def _build_mops_data():
 
 def _build_margin_stock_data():
     _run_downloader("downloader_margin_stock", "build_margin_stock_json", "margin_stock")
+
+
+def _build_tech_history_data():
+    _run_downloader("downloader_tech_history", "build_tech_history_json", "tech_history")
 
 
 def _build_news_data():

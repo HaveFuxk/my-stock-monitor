@@ -1593,6 +1593,7 @@ const STATE = {
   techZoneActive: null,     // 目前選中的子產業 id（pill 切換）
   techZoneClickBound: false, // 確保 event delegation 只綁一次
   intl: null,               // { indices: [...], competitors_by_industry: {id: [...]} } 國際指數 + 全球競爭者
+  techHistory: null,        // { dates:[], industries:{id:{series:[], ret_4w, ret_12w, color, icon, name}} } Tier 3 走勢 + 輪動
   strong: { market: "all", period: "week_x" },
   chips: { who: "foreign", days: 10 },
   heat: { period: "month_high" },
@@ -1649,8 +1650,8 @@ async function fetchJson(url, fallback = null) {
 }
 
 async function loadAll() {
-  // 7 個 endpoint 並行 fetch，個別失敗不擋住其他 section render
-  const [manifest, news, macro, etf, industryMaps, snapshots, techZone, intl] = await Promise.all([
+  // 9 個 endpoint 並行 fetch，個別失敗不擋住其他 section render
+  const [manifest, news, macro, etf, industryMaps, snapshots, techZone, intl, techHistory] = await Promise.all([
     fetchJson("data/manifest.json", null),
     fetchJson("data/news.json", { items: [] }),
     fetchJson("data/macro.json", null),
@@ -1659,6 +1660,7 @@ async function loadAll() {
     fetchJson("data/snapshots/index.json", null),
     fetchJson("data/tech_zone.json", null),
     fetchJson("data/intl.json", null),
+    fetchJson("data/tech_zone_history.json", null),
   ]);
 
   if (!manifest) {
@@ -1675,6 +1677,7 @@ async function loadAll() {
   STATE.snapshots = snapshots;
   STATE.techZone = techZone;
   STATE.intl = intl;
+  STATE.techHistory = techHistory;
 
   renderAll();
 }
@@ -2406,6 +2409,169 @@ function resolveTickerFromManifest(code) {
 }
 
 // ====================== Tech Zone（半導體 / AI 科技業分析）======================
+// Tier 3：產業歷史走勢 + 輪動 SVG。pure SVG（不額外載 chart lib），cwd 之外可獨立 cache。
+function buildTechHistorySvgs(techHistory, activeId) {
+  if (!techHistory || !techHistory.industries || !techHistory.dates) return "";
+  const dates = techHistory.dates;
+  const industries = techHistory.industries;
+  const indList = Object.entries(industries);
+  if (!indList.length || dates.length < 30) return "";
+
+  // ============ Line chart：5 條產業 normalized index ============
+  const W = 760, H = 280, padL = 38, padR = 16, padT = 14, padB = 30;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+  const n = dates.length;
+  // Y 軸範圍：全部 industries 全部點的 min/max
+  let yMin = Infinity, yMax = -Infinity;
+  for (const [, ind] of indList) {
+    for (const v of (ind.series || [])) {
+      if (v == null) continue;
+      if (v < yMin) yMin = v;
+      if (v > yMax) yMax = v;
+    }
+  }
+  if (yMin === Infinity) return "";
+  const ySpan = yMax - yMin || 1;
+  yMin = yMin - ySpan * 0.05;
+  yMax = yMax + ySpan * 0.05;
+  const xAt = (i) => padL + (i / (n - 1)) * chartW;
+  const yAt = (v) => padT + chartH - ((v - yMin) / (yMax - yMin)) * chartH;
+
+  // 4 條水平 gridline + Y label
+  const yTicks = [];
+  for (let i = 0; i <= 4; i++) {
+    const v = yMin + (yMax - yMin) * (i / 4);
+    yTicks.push({ y: yAt(v), label: v.toFixed(0) });
+  }
+  // X 軸：4 個日期 label
+  const xTicks = [];
+  for (let i = 0; i <= 4; i++) {
+    const idx = Math.round((n - 1) * (i / 4));
+    xTicks.push({ x: xAt(idx), label: dates[idx].slice(5) });  // MM-DD
+  }
+
+  // 每產業 line path
+  const lines = indList.map(([id, ind]) => {
+    const series = ind.series || [];
+    const pts = [];
+    for (let i = 0; i < series.length; i++) {
+      if (series[i] != null) pts.push(`${xAt(i).toFixed(1)},${yAt(series[i]).toFixed(1)}`);
+    }
+    if (!pts.length) return "";
+    const isActive = id === activeId;
+    const opacity = isActive ? 1 : 0.45;
+    const sw = isActive ? 2.4 : 1.4;
+    return `<polyline points="${pts.join(" ")}" fill="none" stroke="${ind.color}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round" opacity="${opacity}"/>`;
+  }).join("");
+
+  // Legend rows
+  const legend = indList.map(([id, ind]) => {
+    const last = (ind.series || []).filter(v => v != null).slice(-1)[0] || 100;
+    const isActive = id === activeId;
+    return `
+      <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;${isActive ? "font-weight:700" : "opacity:0.7"};">
+        <span style="display:inline-block;width:12px;height:3px;background:${ind.color};border-radius:2px;"></span>
+        <span>${ind.icon || ""} ${ind.name}</span>
+        <span style="margin-left:auto;color:var(--muted);font-feature-settings:'tnum' 1;">指數 ${last.toFixed(0)}</span>
+      </div>
+    `;
+  }).join("");
+
+  // gridlines
+  const grids = yTicks.map(t => `
+    <line x1="${padL}" y1="${t.y}" x2="${W - padR}" y2="${t.y}" stroke="var(--border)" stroke-width="0.5"/>
+    <text x="${padL - 6}" y="${t.y + 3}" font-size="10" fill="var(--muted)" text-anchor="end">${t.label}</text>
+  `).join("");
+  const xLabels = xTicks.map(t => `<text x="${t.x}" y="${H - 8}" font-size="10" fill="var(--muted)" text-anchor="middle">${t.label}</text>`).join("");
+
+  const lineSvg = `
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;">
+      ${grids}
+      ${lines}
+      ${xLabels}
+    </svg>
+  `;
+
+  // ============ Rotation scatter：4W vs 12W ============
+  const S = 320, sPad = 36;
+  const sChart = S - 2 * sPad;
+  // 軸範圍：全產業 ret_4w / ret_12w 的 [min-pad, max+pad]，並把 0 軸納入
+  const allRets = indList.flatMap(([, ind]) => [ind.ret_4w, ind.ret_12w].filter(v => v != null));
+  let rMin = Math.min(0, ...allRets);
+  let rMax = Math.max(0, ...allRets);
+  const rSpan = rMax - rMin || 1;
+  rMin -= rSpan * 0.1;
+  rMax += rSpan * 0.1;
+  const sX = (v) => sPad + ((v - rMin) / (rMax - rMin)) * sChart;
+  const sY = (v) => sPad + sChart - ((v - rMin) / (rMax - rMin)) * sChart;
+  const zeroX = sX(0), zeroY = sY(0);
+
+  // 4 象限淡色背景：右上=領漲(綠) 左上=補漲(藍) 左下=落後(紅) 右下=減速(橙)
+  const quad = `
+    <rect x="${zeroX}" y="${sPad}" width="${sPad + sChart - zeroX}" height="${zeroY - sPad}" fill="rgba(34,197,94,0.06)"/>
+    <rect x="${sPad}" y="${sPad}" width="${zeroX - sPad}" height="${zeroY - sPad}" fill="rgba(59,130,246,0.06)"/>
+    <rect x="${sPad}" y="${zeroY}" width="${zeroX - sPad}" height="${sPad + sChart - zeroY}" fill="rgba(239,68,68,0.06)"/>
+    <rect x="${zeroX}" y="${zeroY}" width="${sPad + sChart - zeroX}" height="${sPad + sChart - zeroY}" fill="rgba(245,158,11,0.06)"/>
+  `;
+  const axes = `
+    <line x1="${sPad}" y1="${zeroY}" x2="${S - sPad}" y2="${zeroY}" stroke="var(--border-strong)" stroke-width="1"/>
+    <line x1="${zeroX}" y1="${sPad}" x2="${zeroX}" y2="${S - sPad}" stroke="var(--border-strong)" stroke-width="1"/>
+  `;
+  // 軸標籤
+  const axisLabels = `
+    <text x="${S - sPad}" y="${zeroY - 4}" font-size="10" fill="var(--muted)" text-anchor="end">12週 →</text>
+    <text x="${zeroX + 4}" y="${sPad + 10}" font-size="10" fill="var(--muted)">↑ 4週</text>
+    <text x="${S - sPad - 4}" y="${sPad + 12}" font-size="9" fill="var(--up)" text-anchor="end" font-weight="600">領漲</text>
+    <text x="${sPad + 4}" y="${sPad + 12}" font-size="9" fill="#3b82f6" font-weight="600">補漲</text>
+    <text x="${sPad + 4}" y="${S - sPad - 4}" font-size="9" fill="var(--down)" font-weight="600">落後</text>
+    <text x="${S - sPad - 4}" y="${S - sPad - 4}" font-size="9" fill="var(--warn)" text-anchor="end" font-weight="600">減速</text>
+  `;
+  // 各產業點
+  const dots = indList.map(([id, ind]) => {
+    if (ind.ret_4w == null || ind.ret_12w == null) return "";
+    const cx = sX(ind.ret_12w);
+    const cy = sY(ind.ret_4w);
+    const isActive = id === activeId;
+    const r = isActive ? 8 : 6;
+    const sw = isActive ? 2 : 0;
+    return `
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="${ind.color}" stroke="var(--bg)" stroke-width="${sw}" opacity="${isActive ? 1 : 0.85}"/>
+      <text x="${cx}" y="${cy - r - 4}" font-size="10" fill="${ind.color}" text-anchor="middle" font-weight="${isActive ? 700 : 500}">${ind.icon || ""}</text>
+    `;
+  }).join("");
+
+  const scatterSvg = `
+    <svg viewBox="0 0 ${S} ${S}" preserveAspectRatio="xMidYMid meet" style="width:${S}px;max-width:100%;height:auto;">
+      ${quad}
+      ${axes}
+      ${axisLabels}
+      ${dots}
+    </svg>
+  `;
+
+  return `
+    <div class="tz-compare" style="margin-top:1rem;">
+      <h4>📈 5 產業歷史走勢（指數化，起點 = 100）</h4>
+      ${lineSvg}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.4rem 1rem;margin-top:0.6rem;">${legend}</div>
+    </div>
+    <div class="tz-compare" style="margin-top:0.75rem;display:grid;grid-template-columns:auto 1fr;gap:1rem;align-items:center;">
+      <div>
+        <h4 style="margin-top:0;">🔄 產業輪動</h4>
+        ${scatterSvg}
+      </div>
+      <div style="font-size:0.8rem;line-height:1.7;color:var(--muted);">
+        <div style="font-weight:600;color:var(--text-strong);margin-bottom:0.4rem;">象限解讀</div>
+        <div>↗ <strong style="color:var(--up);">領漲</strong>：4 週 +、12 週 + — 趨勢延續</div>
+        <div>↖ <strong style="color:#3b82f6;">補漲</strong>：4 週 +、12 週 - — 落後回補</div>
+        <div>↙ <strong style="color:var(--down);">落後</strong>：4 週 -、12 週 - — 弱勢</div>
+        <div>↘ <strong style="color:var(--warn);">減速</strong>：4 週 -、12 週 + — 過熱回檔</div>
+      </div>
+    </div>
+  `;
+}
+
 function renderTechZone() {
   const data = STATE.techZone;
   const pillsEl = document.getElementById("techZonePills");
@@ -2663,11 +2829,15 @@ function renderTechZone() {
     `;
   }
 
+  // ============ Tier 3：產業走勢 + 輪動圖（SVG）============
+  const techHistoryHtml = buildTechHistorySvgs(STATE.techHistory, STATE.techZoneActive);
+
   bodyEl.innerHTML = `
     ${compareHtml}
     <div class="tz-subtitle">${esc(ind.subtitle)}</div>
     ${summaryHtml}
     ${extrasHtml}
+    ${techHistoryHtml}
     ${companiesHtml}
     ${newsHtml}
     ${intlHtml}
